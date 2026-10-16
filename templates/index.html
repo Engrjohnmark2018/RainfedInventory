@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}RAIN-Tag Alcala — Geotag ng Rainfed Rice Area{% endblock %}
+
+{% block content %}
+<section class="hero card">
+  <h2>Inventory ng Rainfed Rice Areas</h2>
+  <p>Magsasaka! I-record ang inyong rainfed rice area gamit ang geotag na larawan mula sa inyong cellphone.
+     Ilagay muna ang inyong pangalan, tapos kumuha ng larawan na may GPS.</p>
+</section>
+
+<div class="layout-2col">
+  <!-- ======================= SUBMISSION FORM ======================= -->
+  <section class="card" id="form-card">
+    <ol class="steps" id="steps-bar">
+      <li class="step active" data-step="1">1. Pangalan</li>
+      <li class="step" data-step="2">2. Geotag</li>
+      <li class="step" data-step="3">3. I-submit</li>
+    </ol>
+
+    <!-- STEP 1: Name -->
+    <div id="step-1" class="step-panel">
+      <h3>Hakbang 1 &mdash; Ilagay ang inyong pangalan</h3>
+      <form id="name-form" autocomplete="on">
+        <div class="field">
+          <label for="first_name">First Name <span class="req">*</span></label>
+          <input type="text" id="first_name" name="first_name" required maxlength="80"
+                 placeholder="Hal. Juan" pattern="[A-Za-zÀ-ÖØ-öø-ÿÑñ' .\-]{2,80}">
+        </div>
+        <div class="field">
+          <label for="middle_name">Middle Name</label>
+          <input type="text" id="middle_name" name="middle_name" maxlength="80"
+                 placeholder="Hal. Santos" pattern="[A-Za-zÀ-ÖØ-öø-ÿÑñ' .\-]{0,80}">
+        </div>
+        <div class="field">
+          <label for="last_name">Last Name <span class="req">*</span></label>
+          <input type="text" id="last_name" name="last_name" required maxlength="80"
+                 placeholder="Hal. Dela Cruz" pattern="[A-Za-zÀ-ÖØ-öø-ÿÑñ' .\-]{2,80}">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Susunod &rarr;</button>
+      </form>
+    </div>
+
+    <!-- STEP 2: Geotag -->
+    <div id="step-2" class="step-panel hidden">
+      <h3>Hakbang 2 &mdash; Geotag ang inyong rice area</h3>
+
+      <div class="alert alert-info">
+        <strong>Mahalaga:</strong> Kailangan ng larawan ang <em>GPS coordinates</em>. Gawin ang dalawang
+        hakbang sa ibaba &mdash; kunin muna ang lokasyon, tapos kumuha ng larawan.
+      </div>
+
+      <div class="geo-block">
+        <h4>A. Kunin ang live na lokasyon (GPS)</h4>
+        <button type="button" id="btn-gps" class="btn btn-secondary btn-block">📡 Kunin ang Lokasyon (Get Location)</button>
+        <div id="gps-status" class="status-line">Wala pang lokasyon.</div>
+      </div>
+
+      <div class="geo-block">
+        <h4>B. Kunan ng larawan ang rainfed rice area</h4>
+        <label class="btn btn-secondary btn-block file-btn">
+          📷 Kunan ng Larawan / Pumili ng Litrato
+          <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
+        </label>
+        <div id="photo-status" class="status-line">Wala pang larawan.</div>
+        <div id="photo-preview-wrap" class="preview-wrap hidden">
+          <img id="photo-preview" alt="Preview ng larawan">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="btn-back" class="btn btn-ghost">&larr; Bumalik</button>
+        <button type="button" id="btn-submit" class="btn btn-primary" disabled>I-submit ang Datos ✅</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Done -->
+    <div id="step-3" class="step-panel hidden">
+      <div class="success-box">
+        <div class="success-icon">✅</div>
+        <h3>Matagumpay na naitala!</h3>
+        <p id="success-message">Salamat sa inyong impormasyon.</p>
+        <p class="muted" id="success-coords"></p>
+        <button type="button" id="btn-again" class="btn btn-primary">Mag-submit ng Isa Pa</button>
+      </div>
+    </div>
+
+    <div id="form-error" class="alert alert-error hidden"></div>
+    <div id="form-spinner" class="spinner-line hidden">⏳ Nag-u-upload at nag-va-validate...</div>
+  </section>
+
+  <!-- ======================= INSTRUCTIONS ======================= -->
+  <aside class="card instructions">
+    <h3>📖 Paano Gamitin ang RAIN-Tag Alcala</h3>
+    <p class="muted">Tagalog na gabay para sa mga magsasaka &mdash; basahin bago mag-submit.</p>
+
+    <ol class="guide">
+      <li>
+        <strong>Ilagay ang inyong pangalan.</strong>
+        Sa Hakbang 1, i-type ang inyong <em>First Name</em>, <em>Middle Name</em>, at <em>Last Name</em>.
+        Pindutin ang <strong>&ldquo;Susunod&rdquo;</strong>.
+      </li>
+      <li>
+        <strong>I-on ang Location Services ng cellphone.</strong>
+        Sa Settings ng inyong cellphone, buksan ang <em>Location / GPS</em>, at i-allow ang app/browser
+        na gamitin ang lokasyon. Sa camera settings, i-on din ang <em>&ldquo;Location tags / Geo-tagging&rdquo;</em>
+        upang maisulat ng larawan ang GPS nito (EXIF geotag).
+      </li>
+      <li>
+        <strong>Kunin ang live na lokasyon.</strong>
+        Sa Hakbang 2-A, pindutin ang <strong>&ldquo;Kunin ang Lokasyon (Get Location)&rdquo;</strong> at
+        pahintulutan ang hiling ng browser. Mas mainam kung nasa <em>open area / labas ng bahay</em> kayo
+        para malinaw ang GPS signal.
+      </li>
+      <li>
+        <strong>Kunan ng larawan ang rice area.</strong>
+        Sa Hakbang 2-B, pindutin ang <strong>&ldquo;Kunan ng Larawan&rdquo;</strong>. Gumamit ng malinaw at
+        buong kuha ng palayan. Tiyaking naka-on ang GPS bago kumuha upang may <em>geotag</em> ang litrato.
+      </li>
+      <li>
+        <strong>Strict ang app sa GPS.</strong>
+        Tatanggapin lamang ang larawan kung may <em>EXIF GPS (geotag)</em> ito O kaya may nakuha kayong
+        <em>live na GPS</em> bago mag-take ng larawan. Kung wala ang dalawa, <strong>hindi ito tatanggapin</strong>.
+      </li>
+      <li>
+        <strong>I-submit.</strong>
+        Kapag berde ang status ng GPS at larawan, pindutin ang <strong>&ldquo;I-submit ang Datos&rdquo;</strong>.
+        Hintayin ang kumpirmasyon.
+      </li>
+      <li>
+        <strong>Ang admin lamang ang makakakita ng database.</strong>
+        Sinuman ay maaaring mag-submit ng datos, ngunit tanging ang admin ng Rainfed Inventory ang
+        makakakita ng mapa (Leaflet) at mga naitalang lugar, at siya lang ang makaka-export ng CSV at GeoJSON.
+      </li>
+    </ol>
+
+    <div class="alert alert-warning">
+      <strong>Paalala:</strong> Ang mga pekeng larawan o larawang walang GPS ay awtomatikong tinatanggihan
+      ng sistema. Siguraduhing totoo at may geotag ang inyong isinusumite.
+    </div>
+
+    <h4>Bakit kailangan ang GPS?</h4>
+    <p>Ang GPS coordinates ang nagtatakda ng eksaktong lokasyon ng inyong rainfed rice area sa mapa ng
+       Alcala. Ito ang gagamitin ng pamahalaan para sa tamang inventory at pagpaplano ng suporta sa
+       mga magsasaka.</p>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/exifr.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/farmer.js') }}"></script>
+{% endblock %}

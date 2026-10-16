@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Admin Login — RAIN-Tag Alcala{% endblock %}
+
+{% block content %}
+<section class="card login-card">
+  <h2>🔐 Admin Login</h2>
+  <p class="muted">Para lamang sa admin ng Rainfed Inventory. Tanging ang admin ang makakakita ng database at mapa.</p>
+
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off">
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Mag-login</button>
+  </form>
+
+  <p class="muted center"><a href="{{ url_for('index') }}">&larr; Bumalik sa pahina ng magsasaka</a></p>
+</section>
+{% endblock %}

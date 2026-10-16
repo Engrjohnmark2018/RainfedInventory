@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — RAIN-Tag Alcala{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+
+{% block header_extra %}
+<div class="header-actions">
+  <span class="admin-chip">👤 {{ username }}</span>
+  <a class="btn btn-small btn-ghost" href="{{ url_for('admin_logout') }}">Mag-logout</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="dash-toolbar">
+    <div>
+      <h2>🗺️ Rainfed Rice Areas — Alcala, Cagayan</h2>
+      <p class="muted">Kabuuang naitalang lugar: <strong id="stat-total">{{ total }}</strong>
+        &nbsp;|&nbsp; Ang mga puntos sa mapa ay galing sa geotag na larawan ng mga magsasaka.</p>
+    </div>
+    <div class="export-actions">
+      <a class="btn btn-primary" href="{{ url_for('export_csv') }}">⬇️ I-export ang CSV</a>
+      <a class="btn btn-secondary" href="{{ url_for('export_geojson') }}">⬇️ I-export ang GeoJSON (Map Points)</a>
+    </div>
+  </div>
+
+  <div id="map" class="map-box"></div>
+</section>
+
+<section class="card">
+  <div class="dash-toolbar">
+    <h3>📋 Database ng mga Isinumite</h3>
+    <input type="search" id="table-search" class="search-input" placeholder="Hanapin ang pangalan...">
+  </div>
+  <div class="table-wrap">
+    <table id="records-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Pangalan / Name</th>
+          <th>Latitude</th>
+          <th>Longitude</th>
+          <th>GPS Source</th>
+          <th>Accuracy</th>
+          <th>Submitted (PH)</th>
+          <th>Larawan</th>
+        </tr>
+      </thead>
+      <tbody id="records-body"></tbody>
+    </table>
+    <p id="empty-note" class="muted hidden">Wala pang naitalang datos.</p>
+  </div>
+</section>
+
+<div id="photo-modal" class="modal hidden">
+  <div class="modal-body">
+    <button type="button" class="modal-close" id="modal-close">×</button>
+    <img id="modal-img" alt="Geotag photo">
+    <p id="modal-caption" class="muted"></p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script>
+  window.RAINTAG = {
+    records: {{ records_json | safe }},
+    center: {{ center | tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}
