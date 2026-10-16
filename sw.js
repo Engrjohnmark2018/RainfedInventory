@@ -8,7 +8,7 @@
 
 importScripts("/static/js/offline-store.js");
 
-var CACHE_NAME = "rainfedtag-shell-v3";
+var CACHE_NAME = "rainfedtag-shell-v4";
 var SHELL = [
   "/",
   "/static/css/style.css",

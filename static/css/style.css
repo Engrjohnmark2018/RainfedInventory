@@ -49,22 +49,21 @@ html, body {
   gap: 12px;
   flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 18px; }
+.brand { display: flex; align-items: center; gap: 12px; }
 .brand-logo {
-  height: 120px;
-  width: 120px;
-  border-radius: 16px;
+  height: 50px;
+  width: 50px;
+  border-radius: 8px;
   background: #fff;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-  border: 3px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  border: 2px solid rgba(255, 255, 255, 0.55);
 }
-.site-header h1 { margin: 0; font-size: 1.75rem; letter-spacing: 0.3px; }
-.tagline { margin: 2px 0 0; font-size: 0.95rem; opacity: 0.92; }
+.site-header h1 { margin: 0; font-size: 1.45rem; letter-spacing: 0.3px; }
+.tagline { margin: 2px 0 0; font-size: 0.85rem; opacity: 0.92; }
 
 @media (max-width: 640px) {
-  .brand-logo { height: 84px; width: 84px; border-radius: 12px; }
-  .site-header h1 { font-size: 1.3rem; }
-  .tagline { font-size: 0.82rem; }
+  .site-header h1 { font-size: 1.25rem; }
+  .tagline { font-size: 0.78rem; }
 }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
@@ -348,12 +347,12 @@ main.container { padding-top: 22px; padding-bottom: 40px; }
 }
 .login-logo {
   display: block;
-  width: 180px;
-  height: 180px;
-  margin: 0 auto 16px;
-  border-radius: 18px;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 12px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
-  border: 3px solid var(--line);
+  border: 2px solid var(--line);
 }
 .login-card h2 { text-align: center; }
 .login-card > .muted { text-align: center; }
