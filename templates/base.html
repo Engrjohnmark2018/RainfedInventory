@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1b5e20">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.jpg') }}">
   <title>{% block title %}RAINfed-Tagging Alcala{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% block head %}{% endblock %}
@@ -12,7 +14,8 @@
   <header class="site-header">
     <div class="container header-inner">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">🌾</div>
+        <img class="brand-logo" src="{{ url_for('static', filename='img/logo.jpg') }}"
+             alt="Office of the Municipal Agriculturist — Alcala, Cagayan">
         <div>
           <h1>RAINfed-Tagging Alcala</h1>
           <p class="tagline">Rainfed Rice Area Geotagging &amp; Inventory &middot; Alcala, Cagayan</p>
