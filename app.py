@@ -1,6 +1,6 @@
 """
-RAIN-Tag Alcala — Rainfed Area INventory with Geotagging
-========================================================
+RAINfed-Tagging Alcala — Rainfed Rice Area Geotagging & Inventory
+================================================================
 Web application for the inventory of rainfed rice areas in Alcala, Cagayan.
 
 Flow:
@@ -54,7 +54,7 @@ except Exception:  # pragma: no cover
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 DATA_FOLDER = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_FOLDER, "rainetag.db")
+DB_PATH = os.path.join(DATA_FOLDER, "rainfed_tagging.db")
 SECRET_KEY_FILE = os.path.join(DATA_FOLDER, "secret_key.txt")
 
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB per upload
@@ -674,7 +674,7 @@ def export_csv():
         io.BytesIO(buf.getvalue().encode("utf-8-sig")),
         mimetype="text/csv; charset=utf-8",
         as_attachment=True,
-        download_name=f"rainetag_alcala_submissions_{stamp}.csv",
+        download_name=f"rainfed_tagging_alcala_submissions_{stamp}.csv",
     )
 
 
@@ -719,7 +719,7 @@ def export_geojson():
 
     collection = {
         "type": "FeatureCollection",
-        "name": "RAIN-Tag Alcala — Rainfed Rice Areas",
+        "name": "RAINfed-Tagging Alcala — Rainfed Rice Areas",
         "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}},
         "features": features,
     }
@@ -730,13 +730,13 @@ def export_geojson():
         io.BytesIO(payload),
         mimetype="application/geo+json",
         as_attachment=True,
-        download_name=f"rainetag_alcala_points_{stamp}.geojson",
+        download_name=f"rainfed_tagging_alcala_points_{stamp}.geojson",
     )
 
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "app": "RAIN-Tag Alcala"})
+    return jsonify({"status": "ok", "app": "RAINfed-Tagging Alcala"})
 
 
 # ---------------------------------------------------------------------------
@@ -745,5 +745,5 @@ def health():
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
-    print(f"* RAIN-Tag Alcala running on http://0.0.0.0:{port}")
+    print(f"* RAINfed-Tagging Alcala running on http://0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)

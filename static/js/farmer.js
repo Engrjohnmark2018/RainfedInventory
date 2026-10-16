@@ -1,4 +1,4 @@
-/* RAIN-Tag Alcala — farmer submission flow (strict geotag acceptance) */
+/* RAINfed-Tagging Alcala — farmer submission flow (strict geotag acceptance) */
 (function () {
   "use strict";
 

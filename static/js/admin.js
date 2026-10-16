@@ -1,8 +1,8 @@
-/* RAIN-Tag Alcala — admin dashboard (map, table, photo modal) */
+/* RAINfed-Tagging Alcala — admin dashboard (map, table, photo modal) */
 (function () {
   "use strict";
 
-  const cfg = window.RAINTAG || { records: [], center: { lat: 17.7033, lng: 121.6686, zoom: 12 } };
+  const cfg = window.RAINFEDTAG || { records: [], center: { lat: 17.7033, lng: 121.6686, zoom: 12 } };
   const records = cfg.records || [];
 
   /* ---------------- Leaflet map ---------------- */

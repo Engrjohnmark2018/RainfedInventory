@@ -1,4 +1,4 @@
-"""Smoke tests for RAIN-Tag Alcala — strict geotag acceptance."""
+"""Smoke tests for RAINfed-Tagging Alcala — strict geotag acceptance."""
 import io
 import os
 import sys

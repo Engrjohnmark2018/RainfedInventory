@@ -1,6 +1,6 @@
-# 🌾 RAIN-Tag Alcala
+# 🌾 RAINfed-Tagging Alcala
 
-**RAIN-Tag Alcala** — *Rainfed Area **IN**ventory with **G**eotagging — Alcala, Cagayan*
+**RAINfed-Tagging Alcala** — *Rainfed Rice Area Geotagging &amp; Inventory — Alcala, Cagayan*
 
 A web application for the **Inventory of Rainfed Rice Areas in Alcala, Cagayan**. Farmers
 geotag their rainfed rice areas using their phone camera (with GPS), and only the admin can
@@ -81,7 +81,7 @@ before the first run:
 ADMIN_USERNAME=myadmin ADMIN_PASSWORD=a-strong-password python3 app.py
 ```
 
-(delete `data/rainetag.db` first if the admin row was already created), or update the
+(delete `data/rainfed_tagging.db` first if the admin row was already created), or update the
 `admins` table directly. Other useful env vars: `PORT` (default 5000), `SECRET_KEY`
 (auto-generated and persisted in `data/secret_key.txt` otherwise).
 
