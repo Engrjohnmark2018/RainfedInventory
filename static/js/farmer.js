@@ -1,7 +1,16 @@
-/* RAINfed-Tagging Alcala — farmer submission flow (strict geotag acceptance) */
+/* RAINfed-Tagging Alcala — farmer flow: names → built-in geotag camera → submit/sync
+ *
+ * Camera policy: ONLY the in-app camera (getUserMedia) is allowed — no file/gallery
+ * uploads. Every capture is geotagged with the device GPS taken at shutter time;
+ * the server stamps that GPS as EXIF into the stored photo.
+ *
+ * Offline policy: submissions are queued in IndexedDB and auto-synced when
+ * the device is back online (page-side sync + Background Sync in the SW).
+ */
 (function () {
   "use strict";
 
+  /* ---------------- elements ---------------- */
   const stepsBar = document.getElementById("steps-bar");
   const step1 = document.getElementById("step-1");
   const step2 = document.getElementById("step-2");
@@ -13,25 +22,46 @@
   const btnBack = document.getElementById("btn-back");
   const btnSubmit = document.getElementById("btn-submit");
   const btnAgain = document.getElementById("btn-again");
-  const btnGps = document.getElementById("btn-gps");
-  const photoInput = document.getElementById("photo-input");
+
+  const connDot = document.getElementById("conn-dot");
+  const connText = document.getElementById("conn-text");
+  const pendingCount = document.getElementById("pending-count");
+  const btnSyncNow = document.getElementById("btn-sync-now");
+  const syncStatus = document.getElementById("sync-status");
+
+  const btnOpenCamera = document.getElementById("btn-open-camera");
+  const btnShutter = document.getElementById("btn-shutter");
+  const btnRetake = document.getElementById("btn-retake");
+  const cameraWrap = document.getElementById("camera-wrap");
+  const cameraVideo = document.getElementById("camera-video");
+  const cameraNote = document.getElementById("camera-note");
   const gpsStatus = document.getElementById("gps-status");
   const photoStatus = document.getElementById("photo-status");
   const previewWrap = document.getElementById("photo-preview-wrap");
   const photoPreview = document.getElementById("photo-preview");
 
   const MAX_LIVE_ACCURACY_M = 500;
+  const GPS_MAX_AGE_MS = 5 * 60 * 1000; // a fix older than 5 min is stale at capture
 
   const state = {
     firstName: "",
     middleName: "",
     lastName: "",
-    photoFile: null,
-    exifGps: null,      // {lat, lon} from photo EXIF
-    liveGps: null,      // {lat, lon, accuracy}
+    photoBlob: null,
+    capturedAt: null,
+    liveGps: null,        // {lat, lon, accuracy, at}
+    stream: null,
   };
 
-  /* ---------- step navigation ---------- */
+  /* ---------------- small utils ---------------- */
+  function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
   function setStep(n) {
     step1.classList.toggle("hidden", n !== 1);
     step2.classList.toggle("hidden", n !== 2);
@@ -53,7 +83,357 @@
     errorBox.textContent = "";
   }
 
-  /* ---------- STEP 1: names ---------- */
+  /* ================= camera (in-app only — no file upload) ================= */
+  async function openCamera() {
+    cameraNote.textContent = "";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      cameraNote.textContent =
+        "❌ Hindi sinusuportahan ng browser/app ang built-in camera. Gamitin ang mas bagong browser (HTTPS).";
+      cameraNote.className = "status-line bad";
+      return;
+    }
+    stopCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      state.stream = stream;
+      cameraVideo.srcObject = stream;
+      cameraWrap.classList.remove("hidden");
+      await cameraVideo.play().catch(function () {});
+      btnOpenCamera.classList.add("hidden");
+      btnShutter.disabled = false;
+      cameraNote.textContent = "Naka-on ang camera. Pindutin ang KUNAN kapag handa na ang kuha.";
+      cameraNote.className = "status-line ok";
+    } catch (err) {
+      cameraWrap.classList.add("hidden");
+      let msg = "❌ Hindi mabuksan ang camera.";
+      if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
+        msg = "❌ Tinanggihan ang pahintulot sa camera. I-allow ang camera sa browser/cellphone settings. " +
+              "Tanging ang built-in camera ng app ang maaaring gamitin (bawal ang upload).";
+      } else if (err && err.name === "NotFoundError") {
+        msg = "❌ Walang makitang camera sa device.";
+      } else if (err && err.name === "NotReadableError") {
+        msg = "❌ Busy ang camera ng ibang app. Isara ito at subukan muli.";
+      }
+      cameraNote.textContent = msg;
+      cameraNote.className = "status-line bad";
+    }
+  }
+
+  function stopCamera() {
+    if (state.stream) {
+      state.stream.getTracks().forEach(function (t) { t.stop(); });
+      state.stream = null;
+    }
+    cameraVideo.srcObject = null;
+    btnShutter.disabled = true;
+    btnOpenCamera.classList.remove("hidden");
+    cameraWrap.classList.add("hidden");
+  }
+
+  /* ================= GPS ================= */
+  function getGpsOnce() {
+    return new Promise(function (resolve, reject) {
+      if (!navigator.geolocation) {
+        reject(new Error("no-geolocation"));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const acc = pos.coords.accuracy;
+          const notNullIsland = !(Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6);
+          if (!isFinite(lat) || !isFinite(lon) || !notNullIsland) {
+            reject(new Error("invalid"));
+            return;
+          }
+          resolve({ lat: lat, lon: lon, accuracy: acc, at: Date.now() });
+        },
+        function (err) { reject(err); },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+    });
+  }
+
+  function renderGps(gps) {
+    gpsStatus.textContent =
+      "✅ GPS: " + gps.lat.toFixed(6) + ", " + gps.lon.toFixed(6) +
+      " (accuracy ≈ " + Math.round(gps.accuracy) + " m)";
+    gpsStatus.className = "status-line ok";
+  }
+
+  async function ensureFreshGps() {
+    const stale = !state.liveGps || (Date.now() - state.liveGps.at) > GPS_MAX_AGE_MS;
+    if (!stale) return state.liveGps;
+    gpsStatus.textContent = "⏳ Kinukuha ang GPS...";
+    gpsStatus.className = "status-line";
+    try {
+      const gps = await getGpsOnce();
+      if (gps.accuracy > MAX_LIVE_ACCURACY_M) {
+        gpsStatus.textContent =
+          "⚠️ Masyadong malabo ang GPS signal (" + Math.round(gps.accuracy) + " m). " +
+          "Lumabas sa open area at subukan muli (kailangan ≤ " + MAX_LIVE_ACCURACY_M + " m).";
+        gpsStatus.className = "status-line bad";
+        return null;
+      }
+      state.liveGps = gps;
+      renderGps(gps);
+      return gps;
+    } catch (err) {
+      let msg = "❌ Hindi makuha ang GPS.";
+      if (err && err.code === 1) {
+        msg = "❌ Tinanggihan ang pahintulot sa GPS. I-allow ang Location sa browser/cellphone settings.";
+      } else if (err && err.code === 3) {
+        msg = "❌ Na-timeout ang GPS. Subukan muli sa open area.";
+      }
+      gpsStatus.textContent = msg;
+      gpsStatus.className = "status-line bad";
+      return null;
+    }
+  }
+
+  /* ================= capture (shutter) ================= */
+  async function capturePhoto() {
+    if (!state.stream || !cameraVideo.videoWidth) {
+      cameraNote.textContent = "❌ Buksan muna ang camera bago kumuha.";
+      cameraNote.className = "status-line bad";
+      return;
+    }
+
+    // Geotag first: a capture without a fresh GPS fix is not allowed.
+    const gps = await ensureFreshGps();
+    if (!gps) {
+      showError("❌ Kailangan ng tamang GPS bago kumuha ng larawan. Subukan muli sa open area.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = cameraVideo.videoWidth;
+    canvas.height = cameraVideo.videoHeight;
+    canvas.getContext("2d").drawImage(cameraVideo, 0, 0);
+
+    const blob = await new Promise(function (resolve) {
+      canvas.toBlob(resolve, "image/jpeg", 0.92);
+    });
+    if (!blob) {
+      showError("❌ Hindi magawa ang larawan. Subukan muli.");
+      return;
+    }
+
+    state.photoBlob = blob;
+    state.capturedAt = new Date().toISOString();
+    stopCamera();
+
+    photoPreview.src = URL.createObjectURL(blob);
+    previewWrap.classList.remove("hidden");
+    btnRetake.classList.remove("hidden");
+    photoStatus.textContent =
+      "✅ Nakuha ang larawan mula sa built-in camera — may geotag (" +
+      gps.lat.toFixed(6) + ", " + gps.lon.toFixed(6) + "). Handa nang i-submit.";
+    photoStatus.className = "status-line ok";
+    refreshSubmitButton();
+  }
+
+  function retake() {
+    state.photoBlob = null;
+    state.capturedAt = null;
+    previewWrap.classList.add("hidden");
+    photoPreview.src = "";
+    btnRetake.classList.add("hidden");
+    photoStatus.textContent = "Wala pang larawan. Gamitin ang built-in camera ng app.";
+    photoStatus.className = "status-line";
+    refreshSubmitButton();
+    openCamera();
+  }
+
+  function refreshSubmitButton() {
+    btnSubmit.disabled = !(state.photoBlob && state.liveGps);
+  }
+
+  /* ================= offline queue + sync ================= */
+  function updateConnUI() {
+    const online = navigator.onLine;
+    connDot.className = "conn-dot " + (online ? "online" : "offline");
+    connText.textContent = online ? "Online" : "Offline mode — nai-save sa cellphone, a-upload pag may internet";
+    refreshPending();
+  }
+
+  async function refreshPending() {
+    try {
+      const pending = await OfflineStore.getPending();
+      const all = await OfflineStore.getAll();
+      const rejected = all.filter(function (i) { return i.status === "rejected"; });
+      pendingCount.textContent = String(pending.length);
+      if (rejected.length > 0) {
+        syncStatus.textContent = "⚠️ " + rejected.length + " hindi tinanggap ng server — " +
+          (rejected[0].error || "tingnan ang detalye");
+        syncStatus.className = "status-line bad";
+      } else if (pending.length > 0) {
+        syncStatus.textContent = "📦 " + pending.length + " submission(s) nakaimbak — mag-sync pag may internet.";
+        syncStatus.className = "status-line";
+      } else {
+        syncStatus.textContent = "";
+      }
+    } catch (e) { /* IndexedDB unavailable — sync disabled */ }
+  }
+
+  function buildFd(item) {
+    const fd = new FormData();
+    fd.append("first_name", item.first_name);
+    fd.append("middle_name", item.middle_name || "");
+    fd.append("last_name", item.last_name);
+    fd.append("capture_source", "camera");
+    fd.append("client_id", item.client_id);
+    fd.append("captured_at", item.captured_at || "");
+    if (item.live_lat != null) {
+      fd.append("live_lat", item.live_lat);
+      fd.append("live_lon", item.live_lon);
+      fd.append("live_accuracy", item.live_accuracy != null ? item.live_accuracy : "");
+    }
+    fd.append("photo", item.photo, "capture.jpg");
+    return fd;
+  }
+
+  async function postItem(item) {
+    const res = await fetch("/api/submit", { method: "POST", body: buildFd(item) });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    return { status: res.status, ok: res.ok && !!data.ok, data: data, networkError: false };
+  }
+
+  async function syncNow() {
+    if (!navigator.onLine) {
+      syncStatus.textContent = "📡 Offline pa — awtomatikong mag-sync pag may internet.";
+      syncStatus.className = "status-line";
+      return;
+    }
+    syncStatus.textContent = "🔄 Nag-sysync...";
+    syncStatus.className = "status-line";
+    try {
+      const pending = await OfflineStore.getPending();
+      let sent = 0;
+      for (const item of pending) {
+        try {
+          const result = await postItem(item);
+          if (result.ok) {
+            await OfflineStore.remove(item.client_id);
+            sent++;
+          } else if (result.status >= 400 && result.status < 500) {
+            await OfflineStore.markRejected(item.client_id,
+              (result.data.errors && result.data.errors.join(" ")) || "Tinanggihan ng server.");
+          }
+        } catch (e) { break; } // network died mid-sync — retry later
+      }
+      await refreshPending();
+      if (sent > 0 && !syncStatus.classList.contains("bad")) {
+        syncStatus.textContent = "✅ Na-upload ang " + sent + " submission(s).";
+        syncStatus.className = "status-line ok";
+      }
+    } catch (e) { /* ignore */ }
+    // Ask the SW to attempt background sync too (registers for closed-page retries).
+    registerBgSync();
+  }
+
+  function registerBgSync() {
+    if (!("serviceWorker" in navigator) || !("SyncManager" in window)) return;
+    navigator.serviceWorker.ready.then(function (reg) {
+      return reg.sync.register("sync-submissions");
+    }).catch(function () {});
+  }
+
+  /* ================= submit (online direct / offline queue) ================= */
+  async function doSubmit() {
+    if (!state.photoBlob || !state.liveGps) {
+      showError("Kumpletuhin ang larawan (built-in camera) at GPS bago mag-submit.");
+      return;
+    }
+
+    const item = {
+      client_id: uuid(),
+      first_name: state.firstName,
+      middle_name: state.middleName,
+      last_name: state.lastName,
+      capture_source: "camera",
+      photo: state.photoBlob,
+      live_lat: state.liveGps.lat,
+      live_lon: state.liveGps.lon,
+      live_accuracy: state.liveGps.accuracy,
+      captured_at: state.capturedAt || new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+
+    btnSubmit.disabled = true;
+    hideError();
+
+    if (navigator.onLine) {
+      spinner.classList.remove("hidden");
+      try {
+        const result = await postItem(item);
+        spinner.classList.add("hidden");
+        if (result.ok) {
+          const srcNote = result.data.duplicate
+            ? "Naitala na ito kanina (offline sync)."
+            : "Naitala ang inyong rainfed rice area gamit ang geotag ng built-in camera.";
+          showSuccess(srcNote, result.data);
+          return;
+        }
+        if (result.status >= 400 && result.status < 500) {
+          const errs = (result.data && result.data.errors) || ["Hindi matanggap ang datos."];
+          showError("❌ " + errs.join(" "));
+          refreshSubmitButton();
+          return;
+        }
+        // Server error (5xx): queue it like an offline submission.
+      } catch (e) {
+        spinner.classList.add("hidden");
+        // Network failure — fall through to offline queue.
+      }
+    }
+
+    // Offline (or unreachable): store locally and sync later.
+    try {
+      await OfflineStore.enqueue(item);
+      await refreshPending();
+      showSuccess("Nai-save ang datos OFFLINE sa inyong cellphone. A-upload ito awtomatikong pag may internet (i-check ang 'Nakabinbin' sa itaas).", {
+        latitude: item.live_lat, longitude: item.live_lon, gps_source: "live",
+      });
+      registerBgSync();
+    } catch (e) {
+      showError("❌ Hindi mai-save offline. Siguraduhing may storage space ang browser at subukan muli.");
+      refreshSubmitButton();
+    }
+  }
+
+  function showSuccess(message, data) {
+    document.getElementById("success-message").textContent = message;
+    document.getElementById("success-coords").textContent =
+      "Coordinates: " +
+      Number(data.latitude).toFixed(6) + ", " +
+      Number(data.longitude).toFixed(6) +
+      " — Tanging ang admin lamang ang makakakita ng detalye.";
+    setStep(3);
+    resetState();
+  }
+
+  function resetState() {
+    state.photoBlob = null;
+    state.capturedAt = null;
+    state.liveGps = null;
+    stopCamera();
+    previewWrap.classList.add("hidden");
+    photoPreview.src = "";
+    btnRetake.classList.add("hidden");
+    photoStatus.textContent = "Wala pang larawan. Gamitin ang built-in camera ng app.";
+    photoStatus.className = "status-line";
+    gpsStatus.textContent = "Wala pang lokasyon.";
+    gpsStatus.className = "status-line";
+    nameForm.reset();
+  }
+
+  /* ================= wiring ================= */
   nameForm.addEventListener("submit", function (e) {
     e.preventDefault();
     const first = document.getElementById("first_name").value.trim();
@@ -61,234 +441,38 @@
     const last = document.getElementById("last_name").value.trim();
     const nameRe = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]{2,80}$/;
 
-    if (!nameRe.test(first)) {
-      showError("Ilagay ang wastong First Name (2+ titik).");
-      return;
-    }
+    if (!nameRe.test(first)) { showError("Ilagay ang wastong First Name (2+ titik)."); return; }
     if (middle && !/^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]{0,80}$/.test(middle)) {
-      showError("May hindi tanggap na karakter sa Middle Name.");
-      return;
+      showError("May hindi tanggap na karakter sa Middle Name."); return;
     }
-    if (!nameRe.test(last)) {
-      showError("Ilagay ang wastong Last Name (2+ titik).");
-      return;
-    }
+    if (!nameRe.test(last)) { showError("Ilagay ang wastong Last Name (2+ titik)."); return; }
 
     state.firstName = first;
     state.middleName = middle;
     state.lastName = last;
     hideError();
     setStep(2);
+    ensureFreshGps(); // warm up the GPS fix while the farmer opens the camera
   });
 
-  /* ---------- STEP 2-A: live GPS ---------- */
-  btnGps.addEventListener("click", function () {
-    if (!navigator.geolocation) {
-      gpsStatus.textContent = "❌ Hindi sinusuportahan ng browser ang GPS.";
-      gpsStatus.className = "status-line bad";
-      return;
-    }
-    gpsStatus.textContent = "⏳ Kinukuha ang lokasyon... (hintayin)";
-    gpsStatus.className = "status-line";
-    btnGps.disabled = true;
+  btnBack.addEventListener("click", function () { stopCamera(); setStep(1); });
+  btnOpenCamera.addEventListener("click", openCamera);
+  btnShutter.addEventListener("click", capturePhoto);
+  btnRetake.addEventListener("click", retake);
+  btnSubmit.addEventListener("click", doSubmit);
+  btnAgain.addEventListener("click", function () { setStep(1); refreshSubmitButton(); });
+  btnSyncNow.addEventListener("click", syncNow);
 
-    navigator.geolocation.getCurrentPosition(
-      function (pos) {
-        btnGps.disabled = false;
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const acc = pos.coords.accuracy;
-        if (!isFinite(lat) || !isFinite(lon) ||
-            Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6) {
-          gpsStatus.textContent = "❌ Hindi valid ang GPS na nakuha. Subukan muli.";
-          gpsStatus.className = "status-line bad";
-          return;
-        }
-        if (acc > MAX_LIVE_ACCURACY_M) {
-          state.liveGps = null;
-          gpsStatus.textContent =
-            "⚠️ Masyadong malabo ang signal (" + Math.round(acc) + " m). " +
-            "Lumabas sa open area at subukan muli (kailangan ≤ " + MAX_LIVE_ACCURACY_M + " m).";
-          gpsStatus.className = "status-line bad";
-          return;
-        }
-        state.liveGps = { lat: lat, lon: lon, accuracy: acc };
-        gpsStatus.textContent =
-          "✅ Live GPS: " + lat.toFixed(6) + ", " + lon.toFixed(6) +
-          " (accuracy ≈ " + Math.round(acc) + " m)";
-        gpsStatus.className = "status-line ok";
-        refreshSubmitButton();
-      },
-      function (err) {
-        btnGps.disabled = false;
-        let msg = "❌ Hindi makuha ang lokasyon.";
-        if (err.code === err.PERMISSION_DENIED) {
-          msg = "❌ Tinanggihan ang pahintulot sa GPS. I-allow ang Location sa browser/cellphone settings.";
-        } else if (err.code === err.TIMEOUT) {
-          msg = "❌ Na-timeout ang GPS. Subukan muli sa open area.";
-        }
-        gpsStatus.textContent = msg;
-        gpsStatus.className = "status-line bad";
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-    );
-  });
-
-  /* ---------- STEP 2-B: photo + EXIF GPS ---------- */
-  photoInput.addEventListener("change", async function () {
-    hideError();
-    const file = photoInput.files && photoInput.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      photoStatus.textContent = "❌ Hindi larawan ang file. Kumuha muli ng litrato.";
-      photoStatus.className = "status-line bad";
-      state.photoFile = null;
-      refreshSubmitButton();
-      return;
-    }
-    if (file.size > 16 * 1024 * 1024) {
-      photoStatus.textContent = "❌ Masyadong malaki ang larawan (max 16 MB).";
-      photoStatus.className = "status-line bad";
-      state.photoFile = null;
-      refreshSubmitButton();
-      return;
-    }
-
-    // Preview
-    const url = URL.createObjectURL(file);
-    photoPreview.src = url;
-    previewWrap.classList.remove("hidden");
-
-    // Client-side EXIF GPS check (server re-validates strictly)
-    photoStatus.textContent = "⏳ Sinusuri ang EXIF GPS ng larawan...";
-    photoStatus.className = "status-line";
-    state.photoFile = file;
-    state.exifGps = null;
-
-    try {
-      if (window.exifr) {
-        const exif = await window.exifr.parse(file).catch(function () { return null; });
-        if (exif && exif.latitude != null && exif.longitude != null) {
-          const lat = Number(exif.latitude);
-          const lon = Number(exif.longitude);
-          const inRange = isFinite(lat) && isFinite(lon) &&
-            lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
-          const notNullIsland = !(Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6);
-          if (inRange && notNullIsland) {
-            state.exifGps = { lat: lat, lon: lon };
-            photoStatus.textContent =
-              "✅ May EXIF GPS (geotag) ang larawan: " + lat.toFixed(6) + ", " + lon.toFixed(6);
-            photoStatus.className = "status-line ok";
-            refreshSubmitButton();
-            return;
-          }
-        }
-      }
-    } catch (e) {
-      /* fall through to no-EXIF message */
-    }
-
-    if (state.liveGps) {
-      photoStatus.textContent =
-        "⚠️ Walang EXIF GPS ang larawan, ngunit may live GPS kayo — sapat na ito. I-submit.";
-      photoStatus.className = "status-line ok";
-    } else {
-      photoStatus.textContent =
-        "❌ Walang EXIF GPS (geotag) ang larawan. Pindutin ang 'Kunin ang Lokasyon' " +
-        "AT/o i-on ang geotagging sa camera settings bago kumuha muli.";
-      photoStatus.className = "status-line bad";
-    }
-    refreshSubmitButton();
-  });
-
-  /* ---------- submit gate ---------- */
-  function hasGps() {
-    return Boolean(state.exifGps || state.liveGps);
+  window.addEventListener("online", function () { updateConnUI(); syncNow(); });
+  window.addEventListener("offline", updateConnUI);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (event) {
+      if (event.data && event.data.type === "SYNC_DONE") refreshPending();
+    });
   }
-  function refreshSubmitButton() {
-    btnSubmit.disabled = !(state.photoFile && hasGps());
-  }
+  setInterval(refreshPending, 45000);
 
-  btnBack.addEventListener("click", function () {
-    setStep(1);
-  });
-
-  /* ---------- STEP 3: submit ---------- */
-  btnSubmit.addEventListener("click", function () {
-    if (!state.photoFile || !hasGps()) {
-      showError("Kumpletuhin ang larawan at GPS bago mag-submit.");
-      return;
-    }
-
-    const fd = new FormData();
-    fd.append("first_name", state.firstName);
-    fd.append("middle_name", state.middleName);
-    fd.append("last_name", state.lastName);
-    fd.append("photo", state.photoFile);
-    if (state.liveGps) {
-      fd.append("live_lat", state.liveGps.lat);
-      fd.append("live_lon", state.liveGps.lon);
-      fd.append("live_accuracy", state.liveGps.accuracy);
-    }
-
-    btnSubmit.disabled = true;
-    spinner.classList.remove("hidden");
-    hideError();
-
-    fetch("/api/submit", { method: "POST", body: fd })
-      .then(function (res) {
-        return res.json().then(function (data) {
-          return { status: res.status, data: data };
-        });
-      })
-      .then(function (result) {
-        spinner.classList.add("hidden");
-        if (result.data && result.data.ok) {
-          const src = result.data.gps_source === "exif"
-            ? "EXIF geotag ng larawan" : "live na GPS ng cellphone";
-          document.getElementById("success-message").textContent =
-            "Salamat, " + state.firstName + "! Naitala ang inyong rainfed rice area gamit ang " + src + ".";
-          document.getElementById("success-coords").textContent =
-            "Coordinates: " +
-            Number(result.data.latitude).toFixed(6) + ", " +
-            Number(result.data.longitude).toFixed(6) +
-            " — Tanging ang admin lamang ang makakakita ng detalye.";
-          setStep(3);
-          resetState();
-        } else {
-          const errs = (result.data && result.data.errors) || ["Hindi matanggap ang datos. Subukan muli."];
-          showError("❌ " + errs.join(" "));
-          refreshSubmitButton();
-        }
-      })
-      .catch(function () {
-        spinner.classList.add("hidden");
-        showError("❌ May problema sa koneksyon. Siguraduhing may internet at subukan muli.");
-        refreshSubmitButton();
-      });
-  });
-
-  function resetState() {
-    state.photoFile = null;
-    state.exifGps = null;
-    // keep liveGps? No — reset fully so each submission captures fresh data
-    state.liveGps = null;
-    photoInput.value = "";
-    previewWrap.classList.add("hidden");
-    photoPreview.src = "";
-    photoStatus.textContent = "Wala pang larawan.";
-    photoStatus.className = "status-line";
-    gpsStatus.textContent = "Wala pang lokasyon.";
-    gpsStatus.className = "status-line";
-    nameForm.reset();
-  }
-
-  btnAgain.addEventListener("click", function () {
-    setStep(1);
-    refreshSubmitButton();
-  });
-
-  /* init */
+  updateConnUI();
+  registerBgSync();
   setStep(1);
 })();

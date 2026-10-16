@@ -4,8 +4,22 @@
 {% block content %}
 <section class="hero card">
   <h2>Inventory ng Rainfed Rice Areas</h2>
-  <p>Magsasaka! I-record ang inyong rainfed rice area gamit ang geotag na larawan mula sa inyong cellphone.
-     Ilagay muna ang inyong pangalan, tapos kumuha ng larawan na may GPS.</p>
+  <p>Magsasaka! I-record ang inyong rainfed rice area gamit ang <strong>built-in geotag camera</strong> ng app.
+     Ilagay muna ang inyong pangalan, tapos kumuha ng larawan na may GPS. Kahit <strong>walang internet</strong>
+     sa bukid — nai-save ito sa inyong cellphone at a-upload pag may signal na.</p>
+</section>
+
+<!-- Connection + offline queue status -->
+<section class="card status-card">
+  <div class="conn-row">
+    <span class="conn-pill">
+      <span id="conn-dot" class="conn-dot online"></span>
+      <span id="conn-text">Online</span>
+    </span>
+    <span class="pending-pill">📦 Nakabinbin (pending): <strong id="pending-count">0</strong></span>
+    <button type="button" id="btn-sync-now" class="btn btn-small btn-secondary">🔄 I-sync Ngayon</button>
+  </div>
+  <div id="sync-status" class="status-line"></div>
 </section>
 
 <div class="layout-2col">
@@ -13,7 +27,7 @@
   <section class="card" id="form-card">
     <ol class="steps" id="steps-bar">
       <li class="step active" data-step="1">1. Pangalan</li>
-      <li class="step" data-step="2">2. Geotag</li>
+      <li class="step" data-step="2">2. Geotag Camera</li>
       <li class="step" data-step="3">3. I-submit</li>
     </ol>
 
@@ -40,31 +54,36 @@
       </form>
     </div>
 
-    <!-- STEP 2: Geotag -->
+    <!-- STEP 2: Geotag camera -->
     <div id="step-2" class="step-panel hidden">
-      <h3>Hakbang 2 &mdash; Geotag ang inyong rice area</h3>
+      <h3>Hakbang 2 &mdash; Geotag Camera</h3>
 
       <div class="alert alert-info">
-        <strong>Mahalaga:</strong> Kailangan ng larawan ang <em>GPS coordinates</em>. Gawin ang dalawang
-        hakbang sa ibaba &mdash; kunin muna ang lokasyon, tapos kumuha ng larawan.
+        <strong>Mahalaga:</strong> Tanging ang <em>built-in camera ng app</em> ang maaaring gamitin —
+        bawal ang mag-upload mula sa gallery o files. Kinukuha ng app ang inyong GPS bago kunan
+        ng larawan upang <em>geotag</em> ito.
       </div>
 
       <div class="geo-block">
-        <h4>A. Kunin ang live na lokasyon (GPS)</h4>
-        <button type="button" id="btn-gps" class="btn btn-secondary btn-block">📡 Kunin ang Lokasyon (Get Location)</button>
-        <div id="gps-status" class="status-line">Wala pang lokasyon.</div>
+        <h4>A. GPS ng inyong lokasyon</h4>
+        <div id="gps-status" class="status-line">Kinukuha ang GPS kapag handa na...</div>
       </div>
 
       <div class="geo-block">
-        <h4>B. Kunan ng larawan ang rainfed rice area</h4>
-        <label class="btn btn-secondary btn-block file-btn">
-          📷 Kunan ng Larawan / Pumili ng Litrato
-          <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
-        </label>
-        <div id="photo-status" class="status-line">Wala pang larawan.</div>
+        <h4>B. Built-in Geotag Camera</h4>
+        <button type="button" id="btn-open-camera" class="btn btn-secondary btn-block">📷 Buksan ang Camera</button>
+
+        <div id="camera-wrap" class="camera-wrap hidden">
+          <video id="camera-video" playsinline muted></video>
+          <button type="button" id="btn-shutter" class="btn btn-primary btn-block shutter" disabled>📸 KUNAN (Shutter)</button>
+        </div>
+        <div id="camera-note" class="status-line"></div>
+
         <div id="photo-preview-wrap" class="preview-wrap hidden">
           <img id="photo-preview" alt="Preview ng larawan">
         </div>
+        <button type="button" id="btn-retake" class="btn btn-ghost btn-block hidden">🔁 Ulitin (Retake)</button>
+        <div id="photo-status" class="status-line">Wala pang larawan. Gamitin ang built-in camera ng app.</div>
       </div>
 
       <div class="form-actions">
@@ -101,30 +120,32 @@
       </li>
       <li>
         <strong>I-on ang Location Services ng cellphone.</strong>
-        Sa Settings ng inyong cellphone, buksan ang <em>Location / GPS</em>, at i-allow ang app/browser
-        na gamitin ang lokasyon. Sa camera settings, i-on din ang <em>&ldquo;Location tags / Geo-tagging&rdquo;</em>
-        upang maisulat ng larawan ang GPS nito (EXIF geotag).
+        Sa Settings ng inyong cellphone, buksan ang <em>Location / GPS</em>, at i-allow ang browser/app
+        na gamitin ang lokasyon. Ito ang gagamitin ng app bilang <em>geotag</em> ng inyong larawan.
       </li>
       <li>
-        <strong>Kunin ang live na lokasyon.</strong>
-        Sa Hakbang 2-A, pindutin ang <strong>&ldquo;Kunin ang Lokasyon (Get Location)&rdquo;</strong> at
-        pahintulutan ang hiling ng browser. Mas mainam kung nasa <em>open area / labas ng bahay</em> kayo
-        para malinaw ang GPS signal.
+        <strong>Buksan ang Built-in Geotag Camera.</strong>
+        Sa Hakbang 2, pindutin ang <strong>&ldquo;Buksan ang Camera&rdquo;</strong> at pahintulutan ang
+        camera kapag hiningi. <em>Bawal ang mag-upload mula sa gallery o files</em> &mdash; ang camera
+        ng app lamang ang tatanggapin upang siguraduhing totoo at sariwa ang kuha.
       </li>
       <li>
         <strong>Kunan ng larawan ang rice area.</strong>
-        Sa Hakbang 2-B, pindutin ang <strong>&ldquo;Kunan ng Larawan&rdquo;</strong>. Gumamit ng malinaw at
-        buong kuha ng palayan. Tiyaking naka-on ang GPS bago kumuha upang may <em>geotag</em> ang litrato.
+        Pindutin ang <strong>&ldquo;KUNAN (Shutter)&rdquo;</strong>. Bago kumuha, kinukuha muna ng app
+        ang inyong GPS &mdash; kaya siguraduhing nasa <em>open area</em> kayo para malinaw ang signal.
+        Ang larawan ay awtomatikong <em>geotag</em> gamit ang GPS na ito.
       </li>
       <li>
         <strong>Strict ang app sa GPS.</strong>
-        Tatanggapin lamang ang larawan kung may <em>EXIF GPS (geotag)</em> ito O kaya may nakuha kayong
-        <em>live na GPS</em> bago mag-take ng larawan. Kung wala ang dalawa, <strong>hindi ito tatanggapin</strong>.
+        Kung walang tamang GPS fix (halimbawa: malabo ang signal o naka-off ang Location),
+        <strong>hindi makakakuha ng larawan</strong>. Subukan muli sa labas ng bahay o gubat.
       </li>
       <li>
-        <strong>I-submit.</strong>
-        Kapag berde ang status ng GPS at larawan, pindutin ang <strong>&ldquo;I-submit ang Datos&rdquo;</strong>.
-        Hintayin ang kumpirmasyon.
+        <strong>I-submit &mdash; kahit offline!</strong>
+        Pindutin ang <strong>&ldquo;I-submit ang Datos&rdquo;</strong>. Kapag walang internet,
+        <em>nai-save muna ito sa inyong cellphone</em> (makikita sa &ldquo;Nakabinbin&rdquo;).
+        A-upload ito nang <em>awtomatiko</em> kapag may signal/internet na ulit &mdash; o pindutin ang
+        <strong>&ldquo;I-sync Ngayon&rdquo;</strong>.
       </li>
       <li>
         <strong>Ang admin lamang ang makakakita ng database.</strong>
@@ -134,19 +155,25 @@
     </ol>
 
     <div class="alert alert-warning">
-      <strong>Paalala:</strong> Ang mga pekeng larawan o larawang walang GPS ay awtomatikong tinatanggihan
-      ng sistema. Siguraduhing totoo at may geotag ang inyong isinusumite.
+      <strong>Paalala:</strong> Bawal ang pekeng larawan o larawang walang GPS. Walang upload mula sa
+      gallery &mdash; camera ng app lamang, at may kasamang GPS ang bawat kuha.
     </div>
 
     <h4>Bakit kailangan ang GPS?</h4>
     <p>Ang GPS coordinates ang nagtatakda ng eksaktong lokasyon ng inyong rainfed rice area sa mapa ng
        Alcala. Ito ang gagamitin ng pamahalaan para sa tamang inventory at pagpaplano ng suporta sa
-       mga magsasaka.</p>
+       mga magsasaka. Ang GPS ay <em>stamped</em> bilang EXIF geotag sa mismong larawang nai-save.</p>
+
+    <h4>Para saan ang offline mode?</h4>
+    <p>Sa malalayong bahagi ng Alcala, maaaring walang signal. Hindi ito problema &mdash; kumuha lang
+       ng larawan at mag-submit; nai-save lahat sa cellphone, at kapag nagka-signal na ay
+       <em>auto-sync</em> ang datos papunta sa server.</p>
   </aside>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='vendor/exifr.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/offline-store.js') }}"></script>
 <script src="{{ url_for('static', filename='js/farmer.js') }}"></script>
 {% endblock %}

@@ -34,5 +34,13 @@
   </footer>
 
   {% block scripts %}{% endblock %}
+  <script>
+    // Offline support: cache the app shell + background-sync queued submissions.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>

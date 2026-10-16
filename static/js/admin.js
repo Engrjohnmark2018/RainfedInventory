@@ -14,7 +14,7 @@
 
   const markers = [];
   records.forEach(function (r) {
-    const srcLabel = r.gps_source === "exif" ? "EXIF geotag" : "Live GPS";
+    const srcLabel = r.gps_source === "exif" ? "EXIF geotag" : "Camera GPS";
     const popupHtml =
       '<div class="popup">' +
       "<strong>" + escapeHtml(r.name) + "</strong><br>" +
@@ -90,7 +90,7 @@
     modalImg.src = r.photo_url;
     modalCaption.textContent =
       r.name + " — " + r.latitude.toFixed(6) + ", " + r.longitude.toFixed(6) +
-      " (" + (r.gps_source === "exif" ? "EXIF geotag" : "Live GPS") + ")";
+      " (" + (r.gps_source === "exif" ? "EXIF geotag" : "Camera GPS") + ")";
     modal.classList.remove("hidden");
   }
   window.__openPhoto = function (id) {

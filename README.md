@@ -12,19 +12,32 @@ view the collected database on a Leaflet map and export the points.
 
 ### Para sa Magsasaka (Farmer side — public, anyone can send data)
 1. **Name first** — the farmer enters **First Name, Middle Name, Last Name** before anything else.
-2. **Geotag step** — the farmer:
-   - captures **live GPS** from the device (browser Geolocation API), and/or
-   - takes a **geotagged photo** of the rainfed rice area using the phone's built-in camera
-     (`capture="environment"`, EXIF GPS a.k.a. geotag).
-3. **Strict geotag acceptance** — a submission is **rejected** unless it has a real GPS source:
-   - ✅ accepted: photo **EXIF GPS (geotag)** → recorded as `gps_source = exif`
-   - ✅ accepted: no EXIF GPS but a valid **live GPS fix** (accuracy ≤ 500 m) captured at
-     submission time → recorded as `gps_source = live`
+2. **Built-in Geotag Camera** — photos can ONLY be taken with the app's in-app camera
+   (`getUserMedia`). **Gallery/file uploads are not allowed** — the server rejects any
+   submission without `capture_source=camera`, and the UI has no file picker at all.
+3. **Geotag at capture** — right before the shutter, the app captures a fresh device GPS fix
+   (browser Geolocation API). That GPS is stamped into the photo as real **EXIF GPS** on the
+   server, so every stored photo is a true geotagged image.
+4. **Strict GPS acceptance** — a submission is **rejected** unless it has a real GPS source:
+   - ✅ accepted: capture-time **live GPS** (accuracy ≤ 500 m) → `gps_source = live` (camera geotag)
+   - ✅ accepted: photo **EXIF GPS** if present → recorded as `gps_source = exif`
    - ❌ rejected: no EXIF GPS **and** no live GPS
    - ❌ rejected: invalid coordinates, (0, 0) "null island", out-of-range lat/lon,
-     corrupt/non-image files, oversized uploads (> 16 MB)
+     corrupt/non-image files, oversized uploads (> 16 MB), or non-camera uploads
    - The **server re-validates everything** (the client-side check is only for fast feedback).
-4. Photos are uploaded to the server and stored with a random UUID filename + thumbnail.
+5. Photos are uploaded to the server and stored with a random UUID filename + thumbnail,
+   with the GPS geotag stamped as EXIF into the archived JPEG.
+
+### 📴 Offline mode para sa field (sync when online)
+Field work in remote areas of Alcala often has no signal — the app still works:
+- A **service worker** caches the app shell, so the farmer form + camera work fully offline.
+- Submissions made offline are queued in **IndexedDB** on the device (photo + names + GPS).
+  A status bar shows **Online/Offline** and the **"Nakabinbin" (pending)** count.
+- When connectivity returns, the queue **auto-syncs** (page-side `online` event + the
+  **Background Sync API** in the service worker, which can upload even after the page is
+  closed). The farmer can also press **"I-sync Ngayon"** manually.
+- Sync is **idempotent**: each submission carries a device-generated `client_id`, and the
+  server stores it at most once — retries never create duplicates.
 
 ### Para sa Admin (Admin side — login required)
 - **Username + password** login (passwords stored as salted hashes, with login rate-limiting).
@@ -49,8 +62,9 @@ view the collected database on a Leaflet map and export the points.
 |------------|------------|
 | Backend    | Python 3 / Flask |
 | Database   | SQLite (file-based, zero config) |
-| Images     | Pillow (+ pillow-heif for iPhone HEIC), EXIF GPS parsing |
-| Frontend   | Vanilla HTML/CSS/JS (mobile-friendly), [exifr](https://github.com/MikeKovarik/exifr) for client-side EXIF checks |
+| Images     | Pillow (+ pillow-heif for iPhone HEIC), EXIF GPS parsing **and stamping** |
+| Frontend   | Vanilla HTML/CSS/JS (mobile-friendly), in-app camera via `getUserMedia` |
+| Offline    | Service Worker (app-shell cache + Background Sync) + IndexedDB submission queue |
 | Map        | [Leaflet](https://leafletjs.com/) + OpenStreetMap tiles |
 | Auth       | Flask sessions, werkzeug password hashing |
 
@@ -91,21 +105,23 @@ ADMIN_USERNAME=myadmin ADMIN_PASSWORD=a-strong-password python3 app.py
 
 ```
 RainfedInventory/
-├── app.py                     # Flask app: routes, strict GPS validation, EXIF parsing
+├── app.py                     # Flask app: routes, strict GPS validation, EXIF parse + stamp
+├── sw.js                      # Service Worker: offline shell + background sync
 ├── requirements.txt
 ├── templates/
-│   ├── base.html              # shared layout
-│   ├── index.html             # farmer form + Tagalog instructions
+│   ├── base.html              # shared layout + SW registration
+│   ├── index.html             # farmer form (camera-only) + Tagalog instructions
 │   ├── admin_login.html
 │   └── admin_dashboard.html   # Leaflet map + database table + exports
 ├── static/
 │   ├── css/style.css
-│   ├── js/farmer.js           # farmer flow (name → geotag → submit)
+│   ├── js/farmer.js           # farmer flow (name → in-app camera → submit/sync)
+│   ├── js/offline-store.js    # IndexedDB offline queue (page + service worker)
 │   ├── js/admin.js            # map markers, table, photo modal
 │   └── vendor/                # leaflet + exifr (vendored)
 ├── uploads/                   # geotagged photos + thumbnails (gitignored)
 ├── data/                      # SQLite database + secret key (gitignored)
-└── tests/smoke_test.py        # 41 automated checks (strictness, auth, exports)
+└── tests/smoke_test.py        # 54 automated checks (strictness, camera policy, sync, auth)
 ```
 
 Run the tests with:
@@ -118,29 +134,37 @@ python3 tests/smoke_test.py
 
 ## 🔒 Strict Geotag Rules (server-side)
 
-1. The file must be a real, readable image (JPEG/PNG/WebP/HEIC).
-2. GPS is taken from **photo EXIF** first (tag `GPSInfo`); if absent, from the **live GPS**
-   submitted with the form.
-3. Coordinates must be within valid ranges; **(0, 0) is rejected**.
-4. Live GPS accuracy must be **≤ 500 m**.
-5. If neither source provides valid coordinates → **submission rejected** with a Tagalog
+1. Photos must come from the app's **built-in camera** (`capture_source=camera`) —
+   gallery/file uploads are rejected.
+2. The file must be a real, readable image (JPEG/PNG/WebP/HEIC).
+3. GPS is taken from **photo EXIF** first (tag `GPSInfo`); if absent, from the **live GPS**
+   captured at shutter time and submitted with the form.
+4. Coordinates must be within valid ranges; **(0, 0) is rejected**.
+5. Live GPS accuracy must be **≤ 500 m**.
+6. If neither source provides valid coordinates → **submission rejected** with a Tagalog
    error message.
+7. The capture-time GPS is **stamped as EXIF GPS** into the archived photo — every stored
+   image is a true geotagged photo.
 
 ## 🗺️ Data Model
 
-`submissions(id, first_name, middle_name, last_name, photo_file, thumb_file,
+`submissions(id, client_id, first_name, middle_name, last_name, photo_file, thumb_file,
 original_filename, latitude, longitude, gps_source, accuracy_m, altitude_m,
 photo_taken_at, submitted_at)`
+
+`client_id` (UUID generated on the device) makes offline sync idempotent — retried
+submissions are stored at most once.
 
 ---
 
 ## 📖 Tagalog Quick Guide (shown in-app)
 
 1. Ilagay ang **First Name, Middle Name, Last Name** → *Susunod*.
-2. I-on ang **Location Services** at **geotagging** ng camera sa cellphone.
-3. Pindutin ang **"Kunin ang Lokasyon"** (live GPS) — mas mainam sa open area.
-4. Pindutin ang **"Kunan ng Larawan"** at kuhanan ang rainfed rice area.
-5. Kung may **EXIF GPS** o **live GPS**, pindutin ang **"I-submit ang Datos"**.
+2. I-on ang **Location Services** ng cellphone.
+3. Pindutin ang **"Buksan ang Camera"** — *built-in camera lamang, bawal ang upload*.
+4. Pindutin ang **"KUNAN"** — kinukuha ng app ang GPS bago kumuha ng larawan (geotag).
+5. Pindutin ang **"I-submit ang Datos"** — kahit **offline**! Nai-save sa cellphone at
+   **auto-sync** kapag may internet.
 6. Ang **admin lamang** ang makakakita ng database at mapa.
 
 ---
@@ -148,7 +172,8 @@ photo_taken_at, submitted_at)`
 ## ⚠️ Notes for Production
 
 - Run behind **HTTPS** (e.g., nginx + Let's Encrypt, or gunicorn behind a proxy) — browsers
-  only allow the Geolocation API on secure origins.
+  only allow the Geolocation and Camera APIs on secure origins (required for the in-app
+  geotag camera and offline sync).
 - Consider adding CSRF protection (Flask-WTF) and persistent rate limiting (Flask-Limiter)
   before exposing the app publicly.
 - `uploads/` and `data/` are intentionally excluded from Git — back them up separately.

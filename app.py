@@ -143,6 +143,7 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS submissions (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id         TEXT    UNIQUE,
                 first_name        TEXT    NOT NULL,
                 middle_name       TEXT,
                 last_name         TEXT    NOT NULL,
@@ -162,6 +163,10 @@ def init_db() -> None:
                 ON submissions (submitted_at);
             """
         )
+        # Lightweight migration for databases created before client_id existed
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(submissions)")}
+        if "client_id" not in cols:
+            conn.execute("ALTER TABLE submissions ADD COLUMN client_id TEXT UNIQUE")
         # Bootstrap admin account (override with ADMIN_USERNAME / ADMIN_PASSWORD)
         cur = conn.execute("SELECT COUNT(*) AS n FROM admins")
         if cur.fetchone()["n"] == 0:
@@ -305,6 +310,60 @@ def valid_coordinates(lat, lon) -> bool:
     return True
 
 
+def _decimal_to_dms(value: float) -> tuple:
+    value = abs(float(value))
+    degrees = int(value)
+    minutes_full = (value - degrees) * 60.0
+    minutes = int(minutes_full)
+    seconds = (minutes_full - minutes) * 60.0
+    return (float(degrees), float(minutes), round(seconds, 4))
+
+
+def stamp_exif_gps(path: str, lat: float, lon: float, altitude, taken_iso: str | None) -> None:
+    """Write EXIF GPS (geotag) into the stored photo so the archive itself is geotagged.
+
+    In-app camera captures (canvas JPEGs) carry no EXIF, so the GPS fix taken at
+    capture time is stamped here — the saved photo becomes a true geotagged image.
+    """
+    try:
+        img = Image.open(path)
+        exif = Image.Exif()
+
+        gps = {
+            1: "N" if lat >= 0 else "S",
+            2: _decimal_to_dms(lat),
+            3: "E" if lon >= 0 else "W",
+            4: _decimal_to_dms(lon),
+            5: 0,
+        }
+        if altitude is not None:
+            gps[6] = float(abs(altitude))
+            gps[5] = 0 if altitude >= 0 else 1
+        exif[0x8825] = gps
+
+        stamp_str = None
+        if taken_iso:
+            try:
+                stamp_str = (
+                    datetime.fromisoformat(taken_iso)
+                    .strftime("%Y:%m:%d %H:%M:%S")
+                )
+            except (ValueError, TypeError):
+                stamp_str = None
+        if not stamp_str:
+            stamp_str = datetime.now(timezone.utc).strftime("%Y:%m:%d %H:%M:%S")
+        exif[36867] = stamp_str  # DateTimeOriginal
+        exif[306] = stamp_str    # DateTime
+        exif[0x0131] = "RAINfed-Tagging Alcala"  # Software
+
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.save(path, "JPEG", quality=90, exif=exif)
+    except Exception:
+        # Never fail the submission because of stamping; the DB keeps the coords.
+        app.logger.warning("EXIF stamping failed for %s", path)
+
+
 # ---------------------------------------------------------------------------
 # Public: farmer submission
 # ---------------------------------------------------------------------------
@@ -335,12 +394,28 @@ def index():
 
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
-    """Accept a farmer submission. Strictly requires a real GPS source."""
+    """Accept a farmer submission. Strictly requires a real GPS source.
+
+    Policy: photos must come from the app's built-in geotagged camera
+    (`capture_source == 'camera'`) — gallery/file uploads are not accepted.
+    `client_id` (UUID from the device) makes offline sync retries idempotent.
+    """
     first_name = _clean_name(request.form.get("first_name", ""))
     middle_name = _clean_name(request.form.get("middle_name", ""))
     last_name = _clean_name(request.form.get("last_name", ""))
+    capture_source = (request.form.get("capture_source") or "").strip().lower()
+    client_id = (request.form.get("client_id") or "").strip() or None
+    captured_at = (request.form.get("captured_at") or "").strip() or None
+
+    if len(client_id or "") > 64:
+        client_id = client_id[:64]
 
     errors = []
+    if capture_source != "camera":
+        errors.append(
+            "TINANGGIHAN: Tanging built-in geotag camera ng app ang maaaring gamitin. "
+            "Bawal ang pag-upload ng larawan mula sa gallery/files."
+        )
     for value, label, required in (
         (first_name, "First Name", True),
         (middle_name, "Middle Name", False),
@@ -374,6 +449,29 @@ def api_submit():
 
     if errors:
         return jsonify({"ok": False, "errors": errors}), 400
+
+    # --- Offline-sync idempotency: a retried submission is stored once -----
+    if client_id:
+        conn = get_db()
+        try:
+            existing = conn.execute(
+                "SELECT id, gps_source, latitude, longitude FROM submissions WHERE client_id = ?",
+                (client_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if existing:
+            return jsonify(
+                {
+                    "ok": True,
+                    "duplicate": True,
+                    "message": "Naitala na ang datos na ito (galing sa offline sync).",
+                    "id": existing["id"],
+                    "gps_source": existing["gps_source"],
+                    "latitude": existing["latitude"],
+                    "longitude": existing["longitude"],
+                }
+            )
 
     # --- Store the photo in a staging path and validate it -----------------
     ext = os.path.splitext(photo.filename)[1].lower()
@@ -441,6 +539,10 @@ def api_submit():
     final_path = os.path.join(UPLOAD_FOLDER, final_name)
     img.save(final_path, "JPEG", quality=90)
 
+    # Stamp the capture-time GPS into the stored photo (real EXIF geotag).
+    taken_at = meta.get("taken_at") or captured_at
+    stamp_exif_gps(final_path, lat, lon, altitude_m, taken_at)
+
     thumb_name = f"{token}_thumb.jpg"
     thumb_path = os.path.join(UPLOAD_FOLDER, thumb_name)
     thumb = img.copy()
@@ -458,33 +560,55 @@ def api_submit():
 
     conn = get_db()
     try:
-        cur = conn.execute(
-            """
-            INSERT INTO submissions (
-                first_name, middle_name, last_name,
-                photo_file, thumb_file, original_filename,
-                latitude, longitude, gps_source, accuracy_m, altitude_m,
-                photo_taken_at, submitted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                first_name,
-                middle_name or None,
-                last_name,
-                final_name,
-                thumb_name,
-                original_filename,
-                lat,
-                lon,
-                gps_source,
-                accuracy_m,
-                altitude_m,
-                meta.get("taken_at"),
-                _utc_now(),
-            ),
-        )
-        conn.commit()
-        submission_id = cur.lastrowid
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO submissions (
+                    client_id, first_name, middle_name, last_name,
+                    photo_file, thumb_file, original_filename,
+                    latitude, longitude, gps_source, accuracy_m, altitude_m,
+                    photo_taken_at, submitted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    client_id,
+                    first_name,
+                    middle_name or None,
+                    last_name,
+                    final_name,
+                    thumb_name,
+                    original_filename,
+                    lat,
+                    lon,
+                    gps_source,
+                    accuracy_m,
+                    altitude_m,
+                    taken_at,
+                    _utc_now(),
+                ),
+            )
+            conn.commit()
+            submission_id = cur.lastrowid
+        except sqlite3.IntegrityError:
+            # Parallel sync retries raced past the SELECT above — already stored.
+            conn.rollback()
+            existing = conn.execute(
+                "SELECT id, gps_source, latitude, longitude FROM submissions WHERE client_id = ?",
+                (client_id,),
+            ).fetchone()
+            if existing:
+                return jsonify(
+                    {
+                        "ok": True,
+                        "duplicate": True,
+                        "message": "Naitala na ang datos na ito (galing sa offline sync).",
+                        "id": existing["id"],
+                        "gps_source": existing["gps_source"],
+                        "latitude": existing["latitude"],
+                        "longitude": existing["longitude"],
+                    }
+                )
+            raise
     finally:
         conn.close()
 
@@ -737,6 +861,16 @@ def export_geojson():
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "app": "RAINfed-Tagging Alcala"})
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Serve the service worker from the site root so its scope covers the app."""
+    return send_file(
+        os.path.join(BASE_DIR, "sw.js"),
+        mimetype="text/javascript",
+        max_age=0,
+    )
 
 
 # ---------------------------------------------------------------------------

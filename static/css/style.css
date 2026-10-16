@@ -217,6 +217,58 @@ main.container { padding-top: 22px; padding-bottom: 40px; }
 .muted { color: var(--muted); }
 .center { text-align: center; }
 
+/* Connection + offline queue status */
+.status-card { padding: 14px 18px; }
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--green-100);
+  color: var(--green-900);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.conn-dot {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.conn-dot.online { background: #2e7d32; box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.25); }
+.conn-dot.offline { background: #c62828; box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.22); }
+.pending-pill {
+  background: #fff3e0;
+  color: #e65100;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* In-app camera */
+.camera-wrap { margin-top: 12px; }
+.camera-wrap video {
+  width: 100%;
+  max-height: 420px;
+  border-radius: 12px;
+  border: 2px solid var(--green-700);
+  background: #000;
+  display: block;
+}
+.shutter {
+  margin-top: 12px;
+  font-size: 1.15rem;
+  padding: 16px;
+  letter-spacing: 1px;
+}
+
 /* Instructions */
 .instructions h3 { margin-top: 0; color: var(--green-900); }
 .guide { padding-left: 20px; }
