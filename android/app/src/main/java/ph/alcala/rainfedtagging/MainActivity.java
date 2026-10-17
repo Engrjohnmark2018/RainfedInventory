@@ -4,6 +4,10 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -31,13 +35,19 @@ import android.util.Base64;
  * RAINfed-Tagging Alcala — offline edition.
  * A single WebView hosting the bundled app (file:///android_asset/www/index.html).
  * No server: all data stays in the phone (IndexedDB), exports are saved to Downloads.
+ * Compass heading comes from the phone's native rotation sensors (WebView does not
+ * reliably deliver browser DeviceOrientation events).
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements SensorEventListener {
 
     private static final int REQ_PERMS = 101;
     private WebView web;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
+
+    private SensorManager sensorManager;
+    private Sensor compassSensor;
+    private long lastHeadingSentMs = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -136,7 +146,49 @@ public class MainActivity extends Activity {
         }, "Android");
 
         requestNeededPermissions();
+        setupCompassSensors();
         web.loadUrl("file:///android_asset/www/index.html");
+    }
+
+    /* ---------------- native compass (heading to magnetic north) ---------------- */
+
+    private void setupCompassSensors() {
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        // Prefer the geomagnetic rotation vector (magnetic north), then plain
+        // rotation vector, then the legacy orientation sensor.
+        compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
+        if (compassSensor == null) {
+            compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        }
+        if (compassSensor == null) {
+            compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION);
+        }
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        long now = System.currentTimeMillis();
+        if (now - lastHeadingSentMs < 150) return; // throttle ~6.6 Hz
+        float heading;
+        if (event.sensor.getType() == Sensor.TYPE_ORIENTATION) {
+            heading = event.values[0];
+        } else {
+            float[] rotationMatrix = new float[9];
+            float[] orientation = new float[3];
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
+            SensorManager.getOrientation(rotationMatrix, orientation);
+            heading = (float) ((Math.toDegrees(orientation[0]) + 360.0) % 360.0);
+        }
+        lastHeadingSentMs = now;
+        final float h = heading;
+        web.evaluateJavascript(
+                "window.__nativeCompassHeading && window.__nativeCompassHeading(" + h + ");",
+                null);
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        // no-op
     }
 
     private Uri writeDownloads(String name, String mime, byte[] bytes) throws Exception {
@@ -208,10 +260,16 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        if (sensorManager != null && compassSensor != null) {
+            sensorManager.registerListener(this, compassSensor, SensorManager.SENSOR_DELAY_UI);
+        }
     }
 
     @Override
     protected void onPause() {
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
         web.onPause();
         super.onPause();
     }

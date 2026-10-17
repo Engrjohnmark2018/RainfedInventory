@@ -211,6 +211,12 @@
     }, 4000);
   }
 
+  // Native Android sensor bridge (set from MainActivity): the phone's real
+  // magnetometer/rotation sensors, since WebView lacks browser compass events.
+  window.__nativeCompassHeading = function (h) {
+    updateCompass(h);
+  };
+
   /* ---------------- camera ---------------- */
   function stopCamera() {
     if (state.stream) {
