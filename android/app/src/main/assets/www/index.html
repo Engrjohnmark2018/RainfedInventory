@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="tl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1b5e20">
+  <title>RAINfed-Tagging Alcala (Offline)</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <img class="brand-logo" src="img/logo.jpg" alt="Logo">
+        <div>
+          <h1>RAINfed-Tagging Alcala</h1>
+          <p class="tagline">Offline Edition — Nasa cellphone ang lahat ng datos</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" id="tab-farmer" class="btn btn-small btn-primary">🌾 Magsasaka</button>
+        <button type="button" id="tab-admin" class="btn btn-small btn-ghost light">🔐 Admin / Datos</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ============ FARMER VIEW ============ -->
+    <section id="view-farmer">
+      <section class="hero card">
+        <h2>Inventory ng Rainfed Rice Areas — Offline</h2>
+        <p>Ilagay ang pangalan at tirahan, tapos kumuha ng <strong>geotag na larawan</strong> gamit ang
+           built-in camera. <strong>Walang server</strong> — nai-save lahat sa inyong cellphone.
+           I-export ang datos (CSV / GeoJSON / ZIP) kapag kailangan.</p>
+      </section>
+
+      <section class="card status-card">
+        <div class="conn-row">
+          <span class="conn-pill"><span class="conn-dot online"></span> Naka-ONLINE sa cellphone storage</span>
+          <span class="pending-pill">📦 Naitalang lugar: <strong id="local-count">0</strong></span>
+        </div>
+      </section>
+
+      <section class="card" id="form-card">
+        <ol class="steps" id="steps-bar">
+          <li class="step active" data-step="1">1. Pangalan</li>
+          <li class="step" data-step="2">2. Geotag Camera</li>
+          <li class="step" data-step="3">3. Naitala!</li>
+        </ol>
+
+        <div id="step-1">
+          <h3>Hakbang 1 — Pangalan at Tirahan</h3>
+          <form id="name-form">
+            <div class="field">
+              <label for="first_name">First Name <span class="req">*</span></label>
+              <input type="text" id="first_name" maxlength="80" required placeholder="Hal. Juan">
+            </div>
+            <div class="field">
+              <label for="middle_name">Middle Name</label>
+              <input type="text" id="middle_name" maxlength="80" placeholder="Hal. Santos">
+            </div>
+            <div class="field">
+              <label for="last_name">Last Name <span class="req">*</span></label>
+              <input type="text" id="last_name" maxlength="80" required placeholder="Hal. Dela Cruz">
+            </div>
+            <div class="field">
+              <label for="address">Address / Tirahan <span class="req">*</span></label>
+              <input type="text" id="address" maxlength="200" required
+                     placeholder="Hal. Purok 2, Brgy. San Jose, Alcala, Cagayan">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Susunod →</button>
+          </form>
+        </div>
+
+        <div id="step-2" class="hidden">
+          <h3>Hakbang 2 — Built-in Geotag Camera</h3>
+          <div class="alert alert-info">
+            Tanging ang camera ng app ang maaaring gamitin (bawal ang upload). Kinukuha ang GPS
+            bago kumuha ng larawan — may <strong>compass</strong> din para sa direksyon ng kuha.
+          </div>
+
+          <div class="geo-block">
+            <h4>A. GPS ng Lokasyon</h4>
+            <button type="button" id="btn-gps" class="btn btn-secondary btn-block">📡 Kunin ang Lokasyon (GPS)</button>
+            <div id="gps-status" class="status-line">Wala pang lokasyon.</div>
+          </div>
+
+          <div class="geo-block">
+            <h4>B. Built-in Geotag Camera</h4>
+            <button type="button" id="btn-open-camera" class="btn btn-secondary btn-block">📷 Buksan ang Camera</button>
+            <div id="camera-wrap" class="camera-wrap hidden">
+              <video id="camera-video" playsinline muted></video>
+              <div id="compass" class="compass hidden">
+                <div class="compass-dial">
+                  <div class="compass-rose" id="compass-rose">
+                    <span class="c-n">N</span><span class="c-e">E</span>
+                    <span class="c-s">S</span><span class="c-w">W</span>
+                  </div>
+                  <div class="compass-pointer"></div>
+                </div>
+                <div class="compass-heading" id="compass-heading">🧭 ...</div>
+              </div>
+              <button type="button" id="btn-shutter" class="btn btn-primary btn-block shutter" disabled>📸 KUNAN (Shutter)</button>
+            </div>
+            <div id="camera-note" class="status-line"></div>
+            <div id="photo-preview-wrap" class="preview-wrap hidden">
+              <img id="photo-preview" alt="Preview">
+            </div>
+            <button type="button" id="btn-retake" class="btn btn-ghost btn-block hidden">🔁 Ulitin (Retake)</button>
+            <div id="photo-status" class="status-line">Wala pang larawan.</div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="btn-back" class="btn btn-ghost">← Bumalik</button>
+            <button type="button" id="btn-submit" class="btn btn-primary" disabled>Itala sa Cellphone ✅</button>
+          </div>
+        </div>
+
+        <div id="step-3" class="hidden">
+          <div class="success-box">
+            <div class="success-icon">✅</div>
+            <h3>Matagumpay na naitala — nasa cellphone!</h3>
+            <p id="success-message"></p>
+            <p class="muted" id="success-coords"></p>
+            <button type="button" id="btn-again" class="btn btn-primary">Mag-record ng Isa Pa</button>
+          </div>
+        </div>
+
+        <div id="form-error" class="alert alert-error hidden"></div>
+      </section>
+
+      <aside class="card instructions">
+        <h3>📖 Paano Gamitin (Offline App)</h3>
+        <ol class="guide">
+          <li><strong>Ilagay ang pangalan at tirahan</strong> → <em>Susunod</em>.</li>
+          <li><strong>I-on ang Location/GPS</strong> ng cellphone para sa geotag at compass.</li>
+          <li><strong>Buksan ang Camera</strong> — camera ng app lamang, bawal ang upload.</li>
+          <li><strong>Pindutin ang KUNAN</strong> — kinukuha ang GPS at direksyon (compass) bago kumuha.</li>
+          <li><strong>Itala sa Cellphone</strong> — nai-save lahat offline sa inyong device.</li>
+          <li><strong>Admin / Datos</strong> — pindutin ang tab sa itaas (PIN: <code>1234</code>) upang
+              makita ang mapa, table, at i-export ang CSV / GeoJSON / mga larawan (ZIP).</li>
+        </ol>
+        <div class="alert alert-warning">
+          Paalala: para sa tunay na larawan, i-on ang Location Services. Walang internet? Walang problema —
+          ang mapa lamang ang kailangan ng signal; ang datos ay kumpletong offline.
+        </div>
+      </aside>
+    </section>
+
+    <!-- ============ ADMIN VIEW ============ -->
+    <section id="view-admin" class="hidden">
+      <div id="pin-gate" class="card login-card">
+        <img class="login-logo" src="img/logo.jpg" alt="Logo">
+        <h2>🔐 Admin — Ilagay ang PIN</h2>
+        <div class="field">
+          <input type="password" id="pin-input" inputmode="numeric" maxlength="8" placeholder="PIN">
+        </div>
+        <button type="button" id="btn-pin" class="btn btn-primary btn-block">Mag-login</button>
+        <p id="pin-error" class="alert alert-error hidden"></p>
+        <p class="muted center">Default PIN: 1234</p>
+      </div>
+
+      <div id="admin-content" class="hidden">
+        <section class="card">
+          <div class="dash-toolbar">
+            <div>
+              <h2>🗺️ Rainfed Rice Areas (Naka-imbak sa cellphone)</h2>
+              <p class="muted">Kabuuan: <strong id="stat-total">0</strong> — nasa ibaba ang mapa at database.</p>
+            </div>
+            <div class="export-actions">
+              <button type="button" id="btn-export-csv" class="btn btn-primary">⬇️ CSV</button>
+              <button type="button" id="btn-export-geojson" class="btn btn-secondary">⬇️ GeoJSON</button>
+              <button type="button" id="btn-export-zip" class="btn btn-secondary">📷⬇️ Larawan (ZIP)</button>
+              <button type="button" id="btn-clear-all" class="btn btn-ghost">🗑️ Burahin lahat</button>
+            </div>
+          </div>
+          <div id="map" class="map-box"></div>
+        </section>
+
+        <section class="card">
+          <h3>📋 Database ng mga Isinumite</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th><th>Pangalan</th><th>Tirahan</th>
+                  <th>Latitude</th><th>Longitude</th><th>Direksyon</th>
+                  <th>Naitala</th><th>Larawan</th>
+                </tr>
+              </thead>
+              <tbody id="records-body"></tbody>
+            </table>
+            <p id="empty-note" class="muted hidden">Wala pang naitalang datos.</p>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>RAINfed-Tagging Alcala — Offline Edition. Ang lahat ng datos ay nasa cellphone lamang.</p>
+    </div>
+  </footer>
+
+  <div id="photo-modal" class="modal hidden">
+    <div class="modal-body">
+      <button type="button" class="modal-close" id="modal-close">×</button>
+      <img id="modal-img" alt="Geotag photo">
+      <p id="modal-caption" class="muted"></p>
+    </div>
+  </div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="js/exif-write.js"></script>
+  <script src="js/local-app.js"></script>
+</body>
+</html>

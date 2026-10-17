@@ -177,7 +177,44 @@ submissions are stored at most once.
 
 ---
 
-## ⚠️ Notes for Production
+## 📱 Offline APK Edition (no server, phone storage only)
+
+The `android/` folder contains a **standalone Android APK version** of the app that runs
+**100% offline with no server**:
+
+- All data (names, address, geotagged photo with EXIF GPS + compass heading) is stored
+  **inside the phone** (IndexedDB in the app). Nothing is uploaded anywhere.
+- Same strict rules: **in-app camera only** (no gallery upload), GPS required at capture,
+  compass heading recorded, EXIF GPS stamped into the photo (including `GPSImgDirection`).
+- **Admin tab (PIN `1234`)** shows the map, database table, photo viewer, and exports:
+  **CSV**, **GeoJSON**, and **all photos as ZIP** — saved to the phone's *Downloads* folder.
+- The only thing that needs internet is the Leaflet map background (OSM tiles); the data,
+  photos, and exports work completely offline.
+
+### Download & install
+Grab the APK from the repository's **GitHub Releases** page (or from the "Build Android
+APK" Actions run artifact), send it to the Android phone, tap to install (allow
+"install unknown apps" for your browser/file manager), and grant **Camera** + **Location**
+permissions when asked.
+
+### Building the APK yourself
+The APK is built by GitHub Actions (`.github/workflows/build-apk.yml`) on every push that
+touches `android/` — download `rainfed-tagging-alcala-apk` from the run's Artifacts.
+To build locally: open `android/` in Android Studio (it will generate the Gradle wrapper),
+then `gradle assembleDebug` or `./gradlew assembleDebug`. The output is
+`android/app/build/outputs/apk/debug/app-debug.apk` (debug-signed and installable; add
+your own release keystore for distribution).
+
+### Notes & caveats
+- WebView camera (`getUserMedia`) requires granting the Camera permission; on some
+  heavily customized OEM Android builds the in-app preview may fall back poorly — the
+  app shows a clear Tagalog error if the camera is blocked.
+- The offline app stores a default admin PIN `1234` (visible in the UI). Change
+  `ADMIN_PIN` in `assets/www/js/local-app.js` before distributing.
+- Data lives in the app's private storage — remind users to **export regularly** (CSV/
+  GeoJSON/ZIP) as backup; uninstalling the app erases the records.
+
+---
 
 - Run behind **HTTPS** (e.g., nginx + Let's Encrypt, or gunicorn behind a proxy) — browsers
   only allow the Geolocation and Camera APIs on secure origins (required for the in-app
