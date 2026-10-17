@@ -197,6 +197,9 @@
   function attachCompass() {
     if (compassAttached) return;
     compassAttached = true;
+    // Show the compass immediately so the farmer can see it is active.
+    $("compass").classList.remove("hidden");
+    $("compass-heading").textContent = "🧭 kinukuha...";
     window.addEventListener("deviceorientationabsolute", onOrientation, true);
     window.addEventListener("deviceorientation", onOrientation, true);
     if (typeof DeviceOrientationEvent !== "undefined" &&
@@ -207,8 +210,12 @@
       if (state.heading == null) {
         $("compass-heading").textContent = "🧭 N/A";
         $("compass").classList.remove("hidden");
+        $("camera-note").textContent = (window.__nativeCompassAvailable === false)
+          ? "ℹ️ Walang compass sensor ang device na ito — patuloy ang geotag (GPS)."
+          : "ℹ️ Hindi pa makuha ang compass. Hawakan nang maayos at igalaw ng bahagya ang cellphone (kalibrasyon).";
+        $("camera-note").className = "status-line";
       }
-    }, 4000);
+    }, 8000);
   }
 
   // Native Android sensor bridge (set from MainActivity): the phone's real
@@ -275,9 +282,13 @@
         return;
       }
       var c = document.createElement("canvas");
-      c.width = v.videoWidth;
-      c.height = v.videoHeight;
-      c.getContext("2d").drawImage(v, 0, 0);
+      // Square (1:1) photo: centered crop from the camera frame.
+      var side = Math.min(v.videoWidth, v.videoHeight);
+      var sx = (v.videoWidth - side) / 2;
+      var sy = (v.videoHeight - side) / 2;
+      c.width = side;
+      c.height = side;
+      c.getContext("2d").drawImage(v, sx, sy, side, side, 0, 0, side, side);
       c.toBlob(function (blob) {
         if (!blob) { showError("❌ Hindi magawa ang larawan."); return; }
         state.photoBlob = blob;

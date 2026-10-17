@@ -121,6 +121,9 @@
   function attachCompass() {
     if (compassAttached) return;
     compassAttached = true;
+    // Show the compass immediately so the farmer can see it is active.
+    compassEl.classList.remove("hidden");
+    compassHeadingEl.textContent = "🧭 kinukuha...";
     window.addEventListener("deviceorientationabsolute", onOrientation, true);
     window.addEventListener("deviceorientation", onOrientation, true);
     // If nothing arrives shortly, tell the farmer the compass is unavailable.
@@ -132,7 +135,7 @@
           "ℹ️ Hindi available ang compass sa device/browser na ito — patuloy pa rin ang pagkuha ng geotag na larawan.";
         cameraNote.className = "status-line";
       }
-    }, 4000);
+    }, 8000);
   }
 
   async function requestCompassPermission() {
@@ -284,9 +287,13 @@
     }
 
     const canvas = document.createElement("canvas");
-    canvas.width = cameraVideo.videoWidth;
-    canvas.height = cameraVideo.videoHeight;
-    canvas.getContext("2d").drawImage(cameraVideo, 0, 0);
+    // Square (1:1) photo: centered crop from the camera frame.
+    const side = Math.min(cameraVideo.videoWidth, cameraVideo.videoHeight);
+    const sx = (cameraVideo.videoWidth - side) / 2;
+    const sy = (cameraVideo.videoHeight - side) / 2;
+    canvas.width = side;
+    canvas.height = side;
+    canvas.getContext("2d").drawImage(cameraVideo, sx, sy, side, side, 0, 0, side, side);
 
     const blob = await new Promise(function (resolve) {
       canvas.toBlob(resolve, "image/jpeg", 0.92);

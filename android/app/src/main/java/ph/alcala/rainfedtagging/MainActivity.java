@@ -66,7 +66,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         s.setGeolocationEnabled(true);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                // Tell the web layer whether this phone has a native compass sensor.
+                view.evaluateJavascript(
+                        "window.__nativeCompassAvailable = " + (compassSensor != null) + ";",
+                        null);
+            }
+        });
 
         web.setWebChromeClient(new WebChromeClient() {
             @Override
