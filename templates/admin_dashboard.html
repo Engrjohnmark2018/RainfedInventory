@@ -23,6 +23,7 @@
     <div class="export-actions">
       <a class="btn btn-primary" href="{{ url_for('export_csv') }}">⬇️ I-export ang CSV</a>
       <a class="btn btn-secondary" href="{{ url_for('export_geojson') }}">⬇️ I-export ang GeoJSON (Map Points)</a>
+      <a class="btn btn-secondary" href="{{ url_for('export_photos_zip') }}">📷⬇️ Download Lahat ng Larawan (ZIP)</a>
     </div>
   </div>
 
@@ -60,6 +61,7 @@
     <button type="button" class="modal-close" id="modal-close">×</button>
     <img id="modal-img" alt="Geotag photo">
     <p id="modal-caption" class="muted"></p>
+    <a class="btn btn-primary btn-small" id="modal-download" href="#" download>⬇️ I-download ang Larawan</a>
   </div>
 </div>
 {% endblock %}

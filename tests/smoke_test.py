@@ -283,11 +283,37 @@ check("dashboard lists records", "Juan" in html and "Dela Cruz" in html)
 check("dashboard lists address", "Purok 2, Brgy. San Jose" in html)
 check("dashboard has CSV export", "/admin/export/csv" in html)
 check("dashboard has GeoJSON export", "/admin/export/geojson" in html)
+check("dashboard has photo ZIP export", "/admin/export/photos.zip" in html)
 
 r = client.get("/admin/photo/1?thumb=1")
 check("admin photo thumb serves", r.status_code == 200 and r.content_type == "image/jpeg")
 r = client.get("/admin/photo/1")
 check("admin photo full serves", r.status_code == 200)
+
+print("== admin photo download ==")
+r = client.get("/admin/photo/1?download=1")
+check("photo downloads as attachment",
+      r.status_code == 200 and "attachment" in r.headers.get("Content-Disposition", ""),
+      r.headers.get("Content-Disposition", ""))
+check("download filename is meaningful",
+      "rainfed_1_" in r.headers.get("Content-Disposition", ""),
+      r.headers.get("Content-Disposition", ""))
+
+r = client.get("/admin/export/photos.zip")
+import zipfile as _zipfile
+zip_ok = False
+zip_names = []
+try:
+    zf = _zipfile.ZipFile(__import__("io").BytesIO(r.data))
+    zip_names = zf.namelist()
+    zip_ok = zf.testzip() is None
+except Exception:
+    zip_ok = False
+check("photos.zip export 200", r.status_code == 200, f"{r.status_code}")
+check("photos.zip is a valid archive", zip_ok, str(zip_names[:5]))
+check("photos.zip contains geotagged photos",
+      any(n.endswith(".jpg") and n.startswith("photo_") for n in zip_names), str(zip_names[:8]))
+check("photos.zip has manifest.csv", "manifest.csv" in zip_names, str(zip_names[:8]))
 
 print("== exports ==")
 r = client.get("/admin/export/csv")
@@ -312,6 +338,12 @@ check("GeoJSON has heading property",
 
 r = client.get("/admin/logout", follow_redirects=False)
 check("logout works", r.status_code == 302)
+
+# Anonymous access to photo download + zip must be blocked
+r = client.get("/admin/photo/1?download=1")
+check("anonymous photo download blocked", r.status_code in (302,) and "/admin/login" in r.headers.get("Location", ""))
+r = client.get("/admin/export/photos.zip")
+check("anonymous photos.zip blocked", r.status_code in (302,) and "/admin/login" in r.headers.get("Location", ""))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

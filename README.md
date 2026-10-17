@@ -52,6 +52,11 @@ Field work in remote areas of Alcala often has no signal — the app still works
   - **CSV** export of all records (`UTF-8 BOM`, Excel-friendly)
   - **GeoJSON** export of the map points (FeatureCollection of Point features — works in
     QGIS, ArcGIS, Google Earth, kepler.gl, etc.)
+  - **All geotagged photos as a ZIP** archive (with a `manifest.csv` of names/IDs)
+- **Photo viewing & download:** geotagged photos are stored on the server and shown
+  **directly in the map popups** (click to enlarge in the photo viewer). The admin can
+  **download any photo** from the map popup or the photo viewer — the file keeps its
+  GPS-stamped EXIF geotag.
 - **Anyone can send data, but only the admin can see the database.**
 
 ### Instructions

@@ -22,6 +22,7 @@ import re
 import sqlite3
 import time
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -775,11 +776,64 @@ def _get_submission_or_404(pid: int):
 def admin_photo(pid):
     row = _get_submission_or_404(pid)
     want_thumb = request.args.get("thumb") not in (None, "", "0", "false")
+    want_download = request.args.get("download") not in (None, "", "0", "false")
     filename = row["thumb_file"] if (want_thumb and row["thumb_file"]) else row["photo_file"]
     path = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(path):
         abort(404)
+    if want_download:
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{row['last_name']}_{row['first_name']}").strip("_")
+        download_name = f"rainfed_{pid}_{safe or 'photo'}.jpg"
+        return send_file(
+            path,
+            mimetype="image/jpeg",
+            as_attachment=True,
+            download_name=download_name,
+        )
     return send_file(path, mimetype="image/jpeg", max_age=60)
+
+
+@app.route("/admin/export/photos.zip")
+@login_required
+def export_photos_zip():
+    """Download every geotagged photo (with GPS-stamped EXIF) as a ZIP archive."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, first_name, middle_name, last_name, photo_file
+            FROM submissions ORDER BY submitted_at DESC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    buf = io.BytesIO()
+    manifest = io.StringIO()
+    manifest_writer = csv.writer(manifest)
+    manifest_writer.writerow(["zip_filename", "id", "first_name", "middle_name", "last_name"])
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in rows:
+            if not r["photo_file"]:
+                continue
+            path = os.path.join(UPLOAD_FOLDER, r["photo_file"])
+            if not os.path.exists(path):
+                continue
+            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{r['last_name']}_{r['first_name']}").strip("_")
+            arcname = f"photo_{r['id']}_{safe or 'farmer'}.jpg"
+            zf.write(path, arcname)
+            manifest_writer.writerow([arcname, r["id"], r["first_name"], r["middle_name"] or "", r["last_name"]])
+        zf.writestr("manifest.csv", manifest.getvalue())
+
+    buf.seek(0)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"rainfed_tagging_alcala_photos_{stamp}.zip",
+    )
 
 
 @app.route("/admin/export/csv")

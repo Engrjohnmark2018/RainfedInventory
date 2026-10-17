@@ -32,8 +32,11 @@
       "🛰️ GPS: " + srcLabel +
       (r.accuracy_m != null ? " (±" + Math.round(r.accuracy_m) + " m)" : "") + "<br>" +
       "🕓 " + formatPhTime(r.submitted_at) + "<br>" +
-      '<img src="' + r.thumb_url + '" alt="photo" style="width:150px;border-radius:8px;margin-top:6px;cursor:pointer" ' +
-      'onclick="window.__openPhoto(' + r.id + ')">' +
+      '<img src="' + r.thumb_url + '" alt="geotag photo" ' +
+      'style="width:100%;max-width:240px;border-radius:8px;margin-top:6px;cursor:pointer;display:block" ' +
+      'onclick="window.__openPhoto(' + r.id + ')" title="Pindutin para palakihin">' +
+      '<a href="' + r.photo_url + '?download=1" style="display:inline-block;margin-top:6px;font-weight:700" ' +
+      'download>⬇️ I-download ang larawan</a>' +
       "</div>";
     const marker = L.marker([r.latitude, r.longitude]).addTo(map).bindPopup(popupHtml);
     markers.push({ marker: marker, record: r });
@@ -96,12 +99,14 @@
   const modal = document.getElementById("photo-modal");
   const modalImg = document.getElementById("modal-img");
   const modalCaption = document.getElementById("modal-caption");
+  const modalDownload = document.getElementById("modal-download");
 
   function openPhoto(r) {
     modalImg.src = r.photo_url;
     modalCaption.textContent =
       r.name + " — " + r.latitude.toFixed(6) + ", " + r.longitude.toFixed(6) +
       " (" + (r.gps_source === "exif" ? "EXIF geotag" : "Camera GPS") + ")";
+    modalDownload.href = r.photo_url + "?download=1";
     modal.classList.remove("hidden");
   }
   window.__openPhoto = function (id) {
