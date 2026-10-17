@@ -147,6 +147,11 @@
             (Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6)) {
           reject(new Error("invalid")); return;
         }
+        // Give the native compass our location so it can convert magnetic
+        // north -> true north (declination).
+        if (window.Android && Android.setMagLocation) {
+          try { Android.setMagLocation(lat, lon, pos.coords.altitude || 0); } catch (e) {}
+        }
         resolve({ lat: lat, lon: lon, accuracy: acc, at: Date.now() });
       }, function (err) { reject(err); },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
@@ -182,6 +187,8 @@
 
   /* ---------------- compass ---------------- */
   var compassAttached = false;
+  var nativeCompassSeen = false;
+  var calibHintShown = false;
   function updateCompass(heading) {
     if (heading == null || !isFinite(heading)) return;
     heading = ((heading % 360) + 360) % 360;
@@ -191,6 +198,10 @@
     $("compass-heading").textContent = "🧭 " + cardinal(heading) + " " + Math.round(heading) + "°";
   }
   function onOrientation(e) {
+    // Once the native (camera-aware) compass speaks, ignore browser events:
+    // browser DeviceOrientation gives the phone-TOP direction, which is not
+    // the direction the camera is pointing.
+    if (nativeCompassSeen) return;
     if (typeof e.webkitCompassHeading === "number") updateCompass(e.webkitCompassHeading);
     else if (e.absolute && e.alpha != null) updateCompass(360 - e.alpha);
   }
@@ -218,9 +229,17 @@
     }, 8000);
   }
 
-  // Native Android sensor bridge (set from MainActivity): the phone's real
-  // magnetometer/rotation sensors, since WebView lacks browser compass events.
-  window.__nativeCompassHeading = function (h) {
+  // Native Android sensor bridge (set from MainActivity): heading of the
+  // CAMERA direction relative to true north, smoothed on the phone side.
+  // acc = sensor accuracy (0=unreliable .. 3=high).
+  window.__nativeCompassHeading = function (h, acc) {
+    nativeCompassSeen = true;
+    if (typeof acc === "number" && acc < 2 && !calibHintShown) {
+      calibHintShown = true;
+      $("camera-note").textContent =
+        "ℹ️ Para mas tama ang compass, gumawa ng hugis-8 na galaw sa cellphone (kalibrasyon).";
+      $("camera-note").className = "status-line";
+    }
     updateCompass(h);
   };
 

@@ -2,6 +2,7 @@ package ph.alcala.rainfedtagging;
 
 import android.Manifest;
 import android.app.Activity;
+import android.hardware.GeomagneticField;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
@@ -48,6 +49,14 @@ public class MainActivity extends Activity implements SensorEventListener {
     private SensorManager sensorManager;
     private Sensor compassSensor;
     private long lastHeadingSentMs = 0;
+
+    // Compass state: smoothed heading of the CAMERA axis (not the phone top),
+    // referenced to true north via GeomagneticField declination.
+    private final float[] rotMatrix = new float[9];
+    private float smoothSin = Float.NaN;
+    private float smoothCos = 1f;
+    private float declinationDeg = 0f;
+    private int compassAccuracy = 3; // 0=unreliable .. 3=high
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,6 +160,15 @@ public class MainActivity extends Activity implements SensorEventListener {
                     });
                 }
             }
+
+            @JavascriptInterface
+            public void setMagLocation(double lat, double lon, double alt) {
+                // Let the compass know where we are so it can convert magnetic
+                // north to true north (declination differs per location).
+                GeomagneticField field = new GeomagneticField(
+                        (float) lat, (float) lon, (float) alt, System.currentTimeMillis());
+                declinationDeg = field.getDeclination();
+            }
         }, "Android");
 
         requestNeededPermissions();
@@ -158,15 +176,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         web.loadUrl("file:///android_asset/www/index.html");
     }
 
-    /* ---------------- native compass (heading to magnetic north) ---------------- */
+    /* ---------------- native compass (heading of the CAMERA axis, true north) ---------------- */
 
     private void setupCompassSensors() {
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-        // Prefer the geomagnetic rotation vector (magnetic north), then plain
-        // rotation vector, then the legacy orientation sensor.
-        compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
+        // Prefer the gyro-fused rotation vector (smooth + tracks motion), then
+        // the geomagnetic rotation vector, then the legacy orientation sensor.
+        compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         if (compassSensor == null) {
-            compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+            compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR);
         }
         if (compassSensor == null) {
             compassSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION);
@@ -175,28 +193,58 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        long now = System.currentTimeMillis();
-        if (now - lastHeadingSentMs < 150) return; // throttle ~6.6 Hz
         float heading;
         if (event.sensor.getType() == Sensor.TYPE_ORIENTATION) {
             heading = event.values[0];
         } else {
-            float[] rotationMatrix = new float[9];
-            float[] orientation = new float[3];
-            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
-            SensorManager.getOrientation(rotationMatrix, orientation);
-            heading = (float) ((Math.toDegrees(orientation[0]) + 360.0) % 360.0);
+            SensorManager.getRotationMatrixFromVector(rotMatrix, event.values);
+            // Heading of the CAMERA direction (the -Z axis of the device = out
+            // the back where the camera points), projected to the horizontal.
+            // The usual "azimuth of the phone top" is wrong for photo capture:
+            // it swings wildly when the phone is held upright (top pointing up).
+            float cx = -rotMatrix[2];
+            float cy = -rotMatrix[5];
+            float cz = -rotMatrix[8];
+            if (Math.abs(cz) > 0.95f) {
+                // Phone is flat (camera points at the sky/ground): the camera
+                // axis has no compass direction. Fall back to the phone top.
+                cx = rotMatrix[1];
+                cy = rotMatrix[4];
+            }
+            heading = (float) Math.toDegrees(Math.atan2(cx, cy));
         }
+
+        // Convert magnetic north -> true north using local declination.
+        heading = heading + declinationDeg;
+        heading = ((heading % 360f) + 360f) % 360f;
+
+        // Smooth on the unit circle so 0/360 wraparounds do not jump.
+        float rad = (float) Math.toRadians(heading);
+        float s = (float) Math.sin(rad);
+        float c = (float) Math.cos(rad);
+        if (Float.isNaN(smoothSin)) {
+            smoothSin = s;
+            smoothCos = c;
+        } else {
+            smoothSin += 0.25f * (s - smoothSin);
+            smoothCos += 0.25f * (c - smoothCos);
+        }
+        float smooth = (float) Math.toDegrees(Math.atan2(smoothSin, smoothCos));
+        smooth = ((smooth % 360f) + 360f) % 360f;
+
+        long now = System.currentTimeMillis();
+        if (now - lastHeadingSentMs < 120) return; // throttle ~8 Hz
         lastHeadingSentMs = now;
-        final float h = heading;
+        final float h = smooth;
+        final int acc = compassAccuracy;
         web.evaluateJavascript(
-                "window.__nativeCompassHeading && window.__nativeCompassHeading(" + h + ");",
+                "window.__nativeCompassHeading && window.__nativeCompassHeading(" + h + ", " + acc + ");",
                 null);
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // no-op
+        compassAccuracy = accuracy;
     }
 
     private Uri writeDownloads(String name, String mime, byte[] bytes) throws Exception {
@@ -269,7 +317,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         super.onResume();
         web.onResume();
         if (sensorManager != null && compassSensor != null) {
-            sensorManager.registerListener(this, compassSensor, SensorManager.SENSOR_DELAY_UI);
+            sensorManager.registerListener(this, compassSensor, SensorManager.SENSOR_DELAY_GAME);
         }
     }
 
