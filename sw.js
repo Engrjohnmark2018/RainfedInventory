@@ -100,6 +100,7 @@ function buildFormData(item) {
   fd.append("first_name", item.first_name);
   fd.append("middle_name", item.middle_name || "");
   fd.append("last_name", item.last_name);
+  fd.append("address", item.address || "");
   fd.append("capture_source", "camera");
   fd.append("client_id", item.client_id);
   fd.append("captured_at", item.captured_at || "");

@@ -47,6 +47,7 @@
     firstName: "",
     middleName: "",
     lastName: "",
+    address: "",
     photoBlob: null,
     capturedAt: null,
     liveGps: null,        // {lat, lon, accuracy, at}
@@ -285,6 +286,7 @@
     fd.append("first_name", item.first_name);
     fd.append("middle_name", item.middle_name || "");
     fd.append("last_name", item.last_name);
+    fd.append("address", item.address || "");
     fd.append("capture_source", "camera");
     fd.append("client_id", item.client_id);
     fd.append("captured_at", item.captured_at || "");
@@ -356,6 +358,7 @@
       first_name: state.firstName,
       middle_name: state.middleName,
       last_name: state.lastName,
+      address: state.address,
       capture_source: "camera",
       photo: state.photoBlob,
       live_lat: state.liveGps.lat,
@@ -439,17 +442,27 @@
     const first = document.getElementById("first_name").value.trim();
     const middle = document.getElementById("middle_name").value.trim();
     const last = document.getElementById("last_name").value.trim();
+    const address = document.getElementById("address").value.trim()
+      .replace(/\s+/g, " ");
     const nameRe = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]{2,80}$/;
+    const addressRe = /^[A-Za-zÀ-ÖØ-öø-ÿÑñ0-9][A-Za-zÀ-ÖØ-öø-ÿÑñ0-9' .,\-#/()]*$/;
 
     if (!nameRe.test(first)) { showError("Ilagay ang wastong First Name (2+ titik)."); return; }
     if (middle && !/^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]{0,80}$/.test(middle)) {
       showError("May hindi tanggap na karakter sa Middle Name."); return;
     }
     if (!nameRe.test(last)) { showError("Ilagay ang wastong Last Name (2+ titik)."); return; }
+    if (address.length < 5 || address.length > 200) {
+      showError("Ilagay ang kumpletong Address / Tirahan (5-200 titik)."); return;
+    }
+    if (!addressRe.test(address)) {
+      showError("May hindi tanggap na karakter sa Address / Tirahan."); return;
+    }
 
     state.firstName = first;
     state.middleName = middle;
     state.lastName = last;
+    state.address = address;
     hideError();
     setStep(2);
     ensureFreshGps(); // warm up the GPS fix while the farmer opens the camera

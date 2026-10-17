@@ -147,6 +147,7 @@ def init_db() -> None:
                 first_name        TEXT    NOT NULL,
                 middle_name       TEXT,
                 last_name         TEXT    NOT NULL,
+                address           TEXT,
                 photo_file        TEXT    NOT NULL,
                 thumb_file        TEXT,
                 original_filename TEXT,
@@ -163,10 +164,12 @@ def init_db() -> None:
                 ON submissions (submitted_at);
             """
         )
-        # Lightweight migration for databases created before client_id existed
+        # Lightweight migration for databases created before these columns existed
         cols = {row[1] for row in conn.execute("PRAGMA table_info(submissions)")}
         if "client_id" not in cols:
             conn.execute("ALTER TABLE submissions ADD COLUMN client_id TEXT UNIQUE")
+        if "address" not in cols:
+            conn.execute("ALTER TABLE submissions ADD COLUMN address TEXT")
         # Bootstrap admin account (override with ADMIN_USERNAME / ADMIN_PASSWORD)
         cur = conn.execute("SELECT COUNT(*) AS n FROM admins")
         if cur.fetchone()["n"] == 0:
@@ -368,6 +371,7 @@ def stamp_exif_gps(path: str, lat: float, lon: float, altitude, taken_iso: str |
 # Public: farmer submission
 # ---------------------------------------------------------------------------
 NAME_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿÑñ' .-]+$")
+ADDRESS_RE = re.compile(r"^[A-Za-zÀ-ÖØ-öø-ÿÑñ0-9][A-Za-zÀ-ÖØ-öø-ÿÑñ0-9' .,\-#/()]*$")
 
 
 def _clean_name(value: str) -> str:
@@ -387,6 +391,19 @@ def validate_name(value: str, field_label: str, required: bool) -> str | None:
     return None
 
 
+def validate_address(value: str) -> str | None:
+    value = _clean_name(value)
+    if not value:
+        return "Address (Tirahan) ay kinakailangan."
+    if len(value) < 5:
+        return "Address (Tirahan) ay masyadong maikli (kailangan ng 5+ titik)."
+    if len(value) > 200:
+        return "Address (Tirahan) ay masyadong mahaba (max 200 titik)."
+    if not ADDRESS_RE.match(value):
+        return "Address (Tirahan) ay may hindi tanggap na karakter."
+    return None
+
+
 @app.route("/")
 def index():
     return render_template("index.html", heif_enabled=HEIF_ENABLED)
@@ -403,6 +420,7 @@ def api_submit():
     first_name = _clean_name(request.form.get("first_name", ""))
     middle_name = _clean_name(request.form.get("middle_name", ""))
     last_name = _clean_name(request.form.get("last_name", ""))
+    address = _clean_name(request.form.get("address", ""))
     capture_source = (request.form.get("capture_source") or "").strip().lower()
     client_id = (request.form.get("client_id") or "").strip() or None
     captured_at = (request.form.get("captured_at") or "").strip() or None
@@ -424,6 +442,9 @@ def api_submit():
         err = validate_name(value, label, required)
         if err:
             errors.append(err)
+    addr_err = validate_address(address)
+    if addr_err:
+        errors.append(addr_err)
 
     photo = request.files.get("photo")
     if photo is None or not photo.filename:
@@ -564,17 +585,18 @@ def api_submit():
             cur = conn.execute(
                 """
                 INSERT INTO submissions (
-                    client_id, first_name, middle_name, last_name,
+                    client_id, first_name, middle_name, last_name, address,
                     photo_file, thumb_file, original_filename,
                     latitude, longitude, gps_source, accuracy_m, altitude_m,
                     photo_taken_at, submitted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
                     first_name,
                     middle_name or None,
                     last_name,
+                    address,
                     final_name,
                     thumb_name,
                     original_filename,
@@ -678,7 +700,7 @@ def admin_dashboard():
     try:
         rows = conn.execute(
             """
-            SELECT id, first_name, middle_name, last_name,
+            SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
                    photo_taken_at, submitted_at, photo_file
             FROM submissions
@@ -697,6 +719,7 @@ def admin_dashboard():
             {
                 "id": r["id"],
                 "name": name,
+                "address": r["address"] or "",
                 "latitude": r["latitude"],
                 "longitude": r["longitude"],
                 "gps_source": r["gps_source"],
@@ -748,7 +771,7 @@ def export_csv():
     try:
         rows = conn.execute(
             """
-            SELECT id, first_name, middle_name, last_name,
+            SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
                    photo_taken_at, submitted_at, photo_file
             FROM submissions ORDER BY submitted_at DESC
@@ -765,6 +788,7 @@ def export_csv():
             "first_name",
             "middle_name",
             "last_name",
+            "address",
             "latitude",
             "longitude",
             "gps_source",
@@ -782,6 +806,7 @@ def export_csv():
                 r["first_name"],
                 r["middle_name"] or "",
                 r["last_name"],
+                r["address"] or "",
                 r["latitude"],
                 r["longitude"],
                 r["gps_source"],
@@ -809,7 +834,7 @@ def export_geojson():
     try:
         rows = conn.execute(
             """
-            SELECT id, first_name, middle_name, last_name,
+            SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
                    photo_taken_at, submitted_at
             FROM submissions ORDER BY submitted_at DESC
@@ -832,6 +857,7 @@ def export_geojson():
                     "first_name": r["first_name"],
                     "middle_name": r["middle_name"] or "",
                     "last_name": r["last_name"],
+                    "address": r["address"] or "",
                     "gps_source": r["gps_source"],
                     "accuracy_m": r["accuracy_m"],
                     "altitude_m": r["altitude_m"],

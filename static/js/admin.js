@@ -18,6 +18,7 @@
     const popupHtml =
       '<div class="popup">' +
       "<strong>" + escapeHtml(r.name) + "</strong><br>" +
+      "🏠 " + escapeHtml(r.address || "—") + "<br>" +
       "📍 " + r.latitude.toFixed(6) + ", " + r.longitude.toFixed(6) + "<br>" +
       "🛰️ GPS: " + srcLabel +
       (r.accuracy_m != null ? " (±" + Math.round(r.accuracy_m) + " m)" : "") + "<br>" +
@@ -55,6 +56,7 @@
       tr.innerHTML =
         "<td>" + r.id + "</td>" +
         "<td>" + escapeHtml(r.name) + "</td>" +
+        '<td title="' + escapeHtml(r.address || "") + '">' + escapeHtml(r.address || "—") + "</td>" +
         "<td>" + r.latitude.toFixed(6) + "</td>" +
         "<td>" + r.longitude.toFixed(6) + "</td>" +
         "<td>" + srcBadge + "</td>" +

@@ -11,7 +11,8 @@ view the collected database on a Leaflet map and export the points.
 ## ✨ Features
 
 ### Para sa Magsasaka (Farmer side — public, anyone can send data)
-1. **Name first** — the farmer enters **First Name, Middle Name, Last Name** before anything else.
+1. **Name + address first** — the farmer enters **First Name, Middle Name, Last Name** and
+   **Address (Tirahan)** (Purok/Sitio, Barangay, Municipality, Province) before anything else.
 2. **Built-in Geotag Camera** — photos can ONLY be taken with the app's in-app camera
    (`getUserMedia`). **Gallery/file uploads are not allowed** — the server rejects any
    submission without `capture_source=camera`, and the UI has no file picker at all.
@@ -148,8 +149,8 @@ python3 tests/smoke_test.py
 
 ## 🗺️ Data Model
 
-`submissions(id, client_id, first_name, middle_name, last_name, photo_file, thumb_file,
-original_filename, latitude, longitude, gps_source, accuracy_m, altitude_m,
+`submissions(id, client_id, first_name, middle_name, last_name, address, photo_file,
+thumb_file, original_filename, latitude, longitude, gps_source, accuracy_m, altitude_m,
 photo_taken_at, submitted_at)`
 
 `client_id` (UUID generated on the device) makes offline sync idempotent — retried
@@ -159,7 +160,7 @@ submissions are stored at most once.
 
 ## 📖 Tagalog Quick Guide (shown in-app)
 
-1. Ilagay ang **First Name, Middle Name, Last Name** → *Susunod*.
+1. Ilagay ang **First Name, Middle Name, Last Name** at **Address (Tirahan)** → *Susunod*.
 2. I-on ang **Location Services** ng cellphone.
 3. Pindutin ang **"Buksan ang Camera"** — *built-in camera lamang, bawal ang upload*.
 4. Pindutin ang **"KUNAN"** — kinukuha ng app ang GPS bago kumuha ng larawan (geotag).

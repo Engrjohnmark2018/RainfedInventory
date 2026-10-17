@@ -141,6 +141,11 @@ main.container { padding-top: 22px; padding-bottom: 40px; }
   border-color: var(--green-500);
   box-shadow: 0 0 0 3px rgba(67, 160, 71, 0.18);
 }
+.field-hint {
+  margin: 5px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 
 /* Buttons */
 .btn {

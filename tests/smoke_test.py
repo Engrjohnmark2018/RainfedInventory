@@ -60,6 +60,7 @@ def multipart(photo_bytes, filename, form: dict):
 
 
 NAME = {"first_name": "Juan", "middle_name": "Santos", "last_name": "Dela Cruz",
+        "address": "Purok 2, Brgy. San Jose, Alcala, Cagayan",
         "capture_source": "camera"}
 
 print("== EXIF extraction ==")
@@ -154,9 +155,26 @@ check("missing photo rejected", r.status_code == 400, f"{r.status_code}")
 r = client.post("/api/submit",
                 data=multipart(make_jpeg_with_gps(), "f.jpg",
                                {"first_name": "1", "middle_name": "", "last_name": "X",
+                                "address": "Purok 2, Brgy. San Jose, Alcala, Cagayan",
                                 "capture_source": "camera"}),
                 content_type="multipart/form-data")
 check("bad name rejected", r.status_code == 400, f"{r.status_code}")
+
+# 6b. Missing address -> reject
+no_addr = dict(NAME)
+del no_addr["address"]
+r = client.post("/api/submit", data=multipart(make_jpeg_with_gps(), "f2.jpg", no_addr),
+                content_type="multipart/form-data")
+j = r.get_json()
+check("missing address rejected", r.status_code == 400 and not j.get("ok"), f"{r.status_code} {j}")
+check("address error message present",
+      any("Address (Tirahan)" in e for e in (j.get("errors") or [])), str(j))
+
+# 6c. Malicious/bad address characters -> reject
+bad_addr = dict(NAME, address="<script>alert(1)</script>")
+r = client.post("/api/submit", data=multipart(make_jpeg_with_gps(), "f3.jpg", bad_addr),
+                content_type="multipart/form-data")
+check("bad address characters rejected", r.status_code == 400, f"{r.status_code}")
 
 # 7. Fake image (text file with .jpg extension) -> reject
 r = client.post("/api/submit", data=multipart(b"not an image at all", "fake.jpg", NAME),
@@ -228,6 +246,7 @@ html = r.get_data(as_text=True)
 check("dashboard loads", r.status_code == 200)
 check("dashboard has Leaflet map div", 'id="map"' in html)
 check("dashboard lists records", "Juan" in html and "Dela Cruz" in html)
+check("dashboard lists address", "Purok 2, Brgy. San Jose" in html)
 check("dashboard has CSV export", "/admin/export/csv" in html)
 check("dashboard has GeoJSON export", "/admin/export/geojson" in html)
 
@@ -241,6 +260,7 @@ r = client.get("/admin/export/csv")
 csv_text = r.get_data(as_text=True)
 check("CSV export 200", r.status_code == 200)
 check("CSV has header + rows", "first_name" in csv_text and "Juan" in csv_text and "gps_source" in csv_text)
+check("CSV has address column", "address" in csv_text.splitlines()[0] and "Purok 2" in csv_text)
 
 r = client.get("/admin/export/geojson")
 gj = r.get_json()
@@ -250,6 +270,8 @@ check("GeoJSON has features", gj and len(gj.get("features", [])) >= 3,
       str(len((gj or {}).get("features", []))))
 f0 = gj["features"][0]
 check("GeoJSON point geometry", f0["geometry"]["type"] == "Point" and len(f0["geometry"]["coordinates"]) == 2)
+check("GeoJSON has address property",
+      any("address" in f["properties"] for f in gj["features"]))
 
 r = client.get("/admin/logout", follow_redirects=False)
 check("logout works", r.status_code == 302)
