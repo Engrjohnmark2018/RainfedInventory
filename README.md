@@ -18,7 +18,9 @@ view the collected database on a Leaflet map and export the points.
    submission without `capture_source=camera`, and the UI has no file picker at all.
 3. **Geotag at capture** — right before the shutter, the app captures a fresh device GPS fix
    (browser Geolocation API). That GPS is stamped into the photo as real **EXIF GPS** on the
-   server, so every stored photo is a true geotagged image.
+   server, so every stored photo is a true geotagged image. A **compass overlay** on the
+   camera shows the direction the lens is pointing (N/NE/E/...); that **heading (0–360°)**
+   is recorded with the submission and appears in the admin map popups and both exports.
 4. **Strict GPS acceptance** — a submission is **rejected** unless it has a real GPS source:
    - ✅ accepted: capture-time **live GPS** (accuracy ≤ 500 m) → `gps_source = live` (camera geotag)
    - ✅ accepted: photo **EXIF GPS** if present → recorded as `gps_source = exif`
@@ -151,7 +153,7 @@ python3 tests/smoke_test.py
 
 `submissions(id, client_id, first_name, middle_name, last_name, address, photo_file,
 thumb_file, original_filename, latitude, longitude, gps_source, accuracy_m, altitude_m,
-photo_taken_at, submitted_at)`
+heading_deg, photo_taken_at, submitted_at)`
 
 `client_id` (UUID generated on the device) makes offline sync idempotent — retried
 submissions are stored at most once.

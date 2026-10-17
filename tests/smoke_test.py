@@ -187,6 +187,40 @@ r = client.post("/api/submit", data=multipart(make_png_no_gps(), "p.png", form),
                 content_type="multipart/form-data")
 check("PNG + live accepted", r.status_code == 200, f"{r.status_code} {r.get_json()}")
 
+print("== compass heading ==")
+# Heading recorded at shutter time -> accepted and stored
+form = dict(NAME, live_lat="17.74", live_lon="121.70", live_accuracy="12",
+            heading_deg="45.5", captured_at="2026-10-16T12:00:00+00:00")
+r = client.post("/api/submit", data=multipart(make_jpeg_no_gps(), "h1.jpg", form),
+                content_type="multipart/form-data")
+j = r.get_json()
+check("heading_deg accepted", r.status_code == 200 and j.get("ok"), f"{r.status_code} {j}")
+
+conn = __import__("app").get_db()
+try:
+    row = conn.execute("SELECT heading_deg FROM submissions WHERE id = ?", (j.get("id"),)).fetchone()
+finally:
+    conn.close()
+check("heading_deg stored", row is not None and abs(row["heading_deg"] - 45.5) < 0.01,
+      str(row["heading_deg"] if row else None))
+
+# Invalid heading values -> rejected (strict)
+form = dict(NAME, live_lat="17.75", live_lon="121.71", live_accuracy="12", heading_deg="abc")
+r = client.post("/api/submit", data=multipart(make_jpeg_no_gps(), "h2.jpg", form),
+                content_type="multipart/form-data")
+check("non-numeric heading rejected", r.status_code == 400, f"{r.status_code}")
+
+form = dict(NAME, live_lat="17.75", live_lon="121.71", live_accuracy="12", heading_deg="400")
+r = client.post("/api/submit", data=multipart(make_jpeg_no_gps(), "h3.jpg", form),
+                content_type="multipart/form-data")
+check("out-of-range heading rejected", r.status_code == 400, f"{r.status_code}")
+
+# Submission without heading still fine (optional)
+form = dict(NAME, live_lat="17.76", live_lon="121.72", live_accuracy="12")
+r = client.post("/api/submit", data=multipart(make_jpeg_no_gps(), "h4.jpg", form),
+                content_type="multipart/form-data")
+check("missing heading is OK (optional)", r.status_code == 200, f"{r.status_code}")
+
 print("== offline sync idempotency (client_id) ==")
 cid = "test-client-id-0001"
 form = dict(NAME, live_lat="17.73", live_lon="121.69", live_accuracy="15", client_id=cid,
@@ -261,6 +295,7 @@ csv_text = r.get_data(as_text=True)
 check("CSV export 200", r.status_code == 200)
 check("CSV has header + rows", "first_name" in csv_text and "Juan" in csv_text and "gps_source" in csv_text)
 check("CSV has address column", "address" in csv_text.splitlines()[0] and "Purok 2" in csv_text)
+check("CSV has heading column", "heading_deg" in csv_text.splitlines()[0] and "45.5" in csv_text)
 
 r = client.get("/admin/export/geojson")
 gj = r.get_json()
@@ -272,6 +307,8 @@ f0 = gj["features"][0]
 check("GeoJSON point geometry", f0["geometry"]["type"] == "Point" and len(f0["geometry"]["coordinates"]) == 2)
 check("GeoJSON has address property",
       any("address" in f["properties"] for f in gj["features"]))
+check("GeoJSON has heading property",
+      any("heading_deg" in f["properties"] for f in gj["features"]))
 
 r = client.get("/admin/logout", follow_redirects=False)
 check("logout works", r.status_code == 302)

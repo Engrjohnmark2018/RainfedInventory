@@ -170,6 +170,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE submissions ADD COLUMN client_id TEXT UNIQUE")
         if "address" not in cols:
             conn.execute("ALTER TABLE submissions ADD COLUMN address TEXT")
+        if "heading_deg" not in cols:
+            conn.execute("ALTER TABLE submissions ADD COLUMN heading_deg REAL")
         # Bootstrap admin account (override with ADMIN_USERNAME / ADMIN_PASSWORD)
         cur = conn.execute("SELECT COUNT(*) AS n FROM admins")
         if cur.fetchone()["n"] == 0:
@@ -468,6 +470,20 @@ def api_submit():
     live_lon = parse_float("live_lon")
     live_acc = parse_float("live_accuracy")
 
+    # Optional compass heading captured at shutter time (0-360 degrees)
+    raw_heading = (request.form.get("heading_deg") or "").strip()
+    heading_deg = None
+    if raw_heading:
+        try:
+            heading_deg = float(raw_heading)
+            if not (0.0 <= heading_deg <= 360.0):
+                raise ValueError
+        except ValueError:
+            errors.append(
+                "Heading / Direksyon ng camera ay hindi valid (kailangan 0-360 degrees)."
+            )
+            heading_deg = None
+
     if errors:
         return jsonify({"ok": False, "errors": errors}), 400
 
@@ -588,8 +604,8 @@ def api_submit():
                     client_id, first_name, middle_name, last_name, address,
                     photo_file, thumb_file, original_filename,
                     latitude, longitude, gps_source, accuracy_m, altitude_m,
-                    photo_taken_at, submitted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    heading_deg, photo_taken_at, submitted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     client_id,
@@ -605,6 +621,7 @@ def api_submit():
                     gps_source,
                     accuracy_m,
                     altitude_m,
+                    heading_deg,
                     taken_at,
                     _utc_now(),
                 ),
@@ -702,7 +719,7 @@ def admin_dashboard():
             """
             SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
-                   photo_taken_at, submitted_at, photo_file
+                   heading_deg, photo_taken_at, submitted_at, photo_file
             FROM submissions
             ORDER BY submitted_at DESC
             """
@@ -725,6 +742,7 @@ def admin_dashboard():
                 "gps_source": r["gps_source"],
                 "accuracy_m": r["accuracy_m"],
                 "altitude_m": r["altitude_m"],
+                "heading_deg": r["heading_deg"],
                 "photo_taken_at": r["photo_taken_at"],
                 "submitted_at": r["submitted_at"],
                 "photo_url": url_for("admin_photo", pid=r["id"]),
@@ -773,7 +791,7 @@ def export_csv():
             """
             SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
-                   photo_taken_at, submitted_at, photo_file
+                   heading_deg, photo_taken_at, submitted_at, photo_file
             FROM submissions ORDER BY submitted_at DESC
             """
         ).fetchall()
@@ -794,6 +812,7 @@ def export_csv():
             "gps_source",
             "accuracy_m",
             "altitude_m",
+            "heading_deg",
             "photo_taken_at",
             "submitted_at",
             "photo_file",
@@ -812,6 +831,7 @@ def export_csv():
                 r["gps_source"],
                 r["accuracy_m"] if r["accuracy_m"] is not None else "",
                 r["altitude_m"] if r["altitude_m"] is not None else "",
+                r["heading_deg"] if r["heading_deg"] is not None else "",
                 r["photo_taken_at"] or "",
                 r["submitted_at"],
                 r["photo_file"],
@@ -836,7 +856,7 @@ def export_geojson():
             """
             SELECT id, first_name, middle_name, last_name, address,
                    latitude, longitude, gps_source, accuracy_m, altitude_m,
-                   photo_taken_at, submitted_at
+                   heading_deg, photo_taken_at, submitted_at
             FROM submissions ORDER BY submitted_at DESC
             """
         ).fetchall()
@@ -861,6 +881,7 @@ def export_geojson():
                     "gps_source": r["gps_source"],
                     "accuracy_m": r["accuracy_m"],
                     "altitude_m": r["altitude_m"],
+                    "heading_deg": r["heading_deg"],
                     "photo_taken_at": r["photo_taken_at"],
                     "submitted_at": r["submitted_at"],
                 },

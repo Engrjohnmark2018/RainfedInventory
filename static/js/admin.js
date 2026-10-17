@@ -13,13 +13,22 @@
   }).addTo(map);
 
   const markers = [];
+  function cardinal(deg) {
+    const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+  }
+
   records.forEach(function (r) {
     const srcLabel = r.gps_source === "exif" ? "EXIF geotag" : "Camera GPS";
+    const headingLine = (r.heading_deg != null)
+      ? "🧭 " + cardinal(r.heading_deg) + " (" + Math.round(r.heading_deg) + "°)<br>"
+      : "";
     const popupHtml =
       '<div class="popup">' +
       "<strong>" + escapeHtml(r.name) + "</strong><br>" +
       "🏠 " + escapeHtml(r.address || "—") + "<br>" +
       "📍 " + r.latitude.toFixed(6) + ", " + r.longitude.toFixed(6) + "<br>" +
+      headingLine +
       "🛰️ GPS: " + srcLabel +
       (r.accuracy_m != null ? " (±" + Math.round(r.accuracy_m) + " m)" : "") + "<br>" +
       "🕓 " + formatPhTime(r.submitted_at) + "<br>" +

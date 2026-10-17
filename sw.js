@@ -104,6 +104,9 @@ function buildFormData(item) {
   fd.append("capture_source", "camera");
   fd.append("client_id", item.client_id);
   fd.append("captured_at", item.captured_at || "");
+  if (item.heading_deg != null) {
+    fd.append("heading_deg", item.heading_deg);
+  }
   if (item.live_lat != null) {
     fd.append("live_lat", item.live_lat);
     fd.append("live_lon", item.live_lon);

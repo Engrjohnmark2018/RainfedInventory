@@ -81,6 +81,16 @@
 
         <div id="camera-wrap" class="camera-wrap hidden">
           <video id="camera-video" playsinline muted></video>
+          <div id="compass" class="compass hidden" aria-hidden="true">
+            <div class="compass-dial">
+              <div class="compass-rose" id="compass-rose">
+                <span class="c-n">N</span><span class="c-e">E</span>
+                <span class="c-s">S</span><span class="c-w">W</span>
+              </div>
+              <div class="compass-pointer"></div>
+            </div>
+            <div class="compass-heading" id="compass-heading">🧭 ...</div>
+          </div>
           <button type="button" id="btn-shutter" class="btn btn-primary btn-block shutter" disabled>📸 KUNAN (Shutter)</button>
         </div>
         <div id="camera-note" class="status-line"></div>
@@ -140,7 +150,9 @@
         <strong>Kunan ng larawan ang rice area.</strong>
         Pindutin ang <strong>&ldquo;KUNAN (Shutter)&rdquo;</strong>. Bago kumuha, kinukuha muna ng app
         ang inyong GPS &mdash; kaya siguraduhing nasa <em>open area</em> kayo para malinaw ang signal.
-        Ang larawan ay awtomatikong <em>geotag</em> gamit ang GPS na ito.
+        Ang larawan ay awtomatikong <em>geotag</em> gamit ang GPS na ito. May <strong>compass</strong> din
+        sa camera na nagpapakita ng direksyon (hal. N, NE, E) ng inyong kuha &mdash; naitatala ito kasama
+        ng larawan.
       </li>
       <li>
         <strong>Strict ang app sa GPS.</strong>

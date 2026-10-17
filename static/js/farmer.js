@@ -50,6 +50,8 @@
     address: "",
     photoBlob: null,
     capturedAt: null,
+    heading: null,          // live compass heading (deg, 0=N)
+    capturedHeading: null,  // heading frozen at shutter time
     liveGps: null,        // {lat, lon, accuracy, at}
     stream: null,
   };
@@ -84,6 +86,68 @@
     errorBox.textContent = "";
   }
 
+  /* ================= compass (camera overlay) ================= */
+  const compassEl = document.getElementById("compass");
+  const compassRose = document.getElementById("compass-rose");
+  const compassHeadingEl = document.getElementById("compass-heading");
+  let compassAttached = false;
+  let compassGotReading = false;
+
+  function cardinal(deg) {
+    const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+  }
+
+  function updateCompass(heading) {
+    if (heading == null || !isFinite(heading)) return;
+    heading = ((heading % 360) + 360) % 360;
+    state.heading = heading;
+    compassGotReading = true;
+    compassEl.classList.remove("hidden");
+    compassRose.style.transform = "rotate(" + (-heading) + "deg)";
+    compassHeadingEl.textContent =
+      "🧭 " + cardinal(heading) + " " + Math.round(heading) + "°";
+  }
+
+  function onOrientation(e) {
+    // iOS Safari exposes webkitCompassHeading; Android/Chrome uses absolute alpha.
+    if (typeof e.webkitCompassHeading === "number") {
+      updateCompass(e.webkitCompassHeading);
+    } else if (e.absolute && e.alpha != null) {
+      updateCompass(360 - e.alpha);
+    }
+  }
+
+  function attachCompass() {
+    if (compassAttached) return;
+    compassAttached = true;
+    window.addEventListener("deviceorientationabsolute", onOrientation, true);
+    window.addEventListener("deviceorientation", onOrientation, true);
+    // If nothing arrives shortly, tell the farmer the compass is unavailable.
+    setTimeout(function () {
+      if (!compassGotReading && !cameraWrap.classList.contains("hidden")) {
+        compassHeadingEl.textContent = "🧭 N/A";
+        compassEl.classList.remove("hidden");
+        cameraNote.textContent =
+          "ℹ️ Hindi available ang compass sa device/browser na ito — patuloy pa rin ang pagkuha ng geotag na larawan.";
+        cameraNote.className = "status-line";
+      }
+    }, 4000);
+  }
+
+  async function requestCompassPermission() {
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
+      try {
+        const res = await DeviceOrientationEvent.requestPermission();
+        return res === "granted";
+      } catch (e) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /* ================= camera (in-app only — no file upload) ================= */
   async function openCamera() {
     cameraNote.textContent = "";
@@ -107,6 +171,14 @@
       btnShutter.disabled = false;
       cameraNote.textContent = "Naka-on ang camera. Pindutin ang KUNAN kapag handa na ang kuha.";
       cameraNote.className = "status-line ok";
+      // Start the compass alongside the camera (permission prompt on iOS).
+      const compassOk = await requestCompassPermission();
+      if (compassOk) {
+        attachCompass();
+      } else {
+        compassHeadingEl.textContent = "🧭 N/A";
+        compassEl.classList.remove("hidden");
+      }
     } catch (err) {
       cameraWrap.classList.add("hidden");
       let msg = "❌ Hindi mabuksan ang camera.";
@@ -226,6 +298,7 @@
 
     state.photoBlob = blob;
     state.capturedAt = new Date().toISOString();
+    state.capturedHeading = state.heading; // freeze the compass heading at shutter time
     stopCamera();
 
     photoPreview.src = URL.createObjectURL(blob);
@@ -233,7 +306,11 @@
     btnRetake.classList.remove("hidden");
     photoStatus.textContent =
       "✅ Nakuha ang larawan mula sa built-in camera — may geotag (" +
-      gps.lat.toFixed(6) + ", " + gps.lon.toFixed(6) + "). Handa nang i-submit.";
+      gps.lat.toFixed(6) + ", " + gps.lon.toFixed(6) + ")" +
+      (state.capturedHeading != null
+        ? ", direksyon: " + cardinal(state.capturedHeading) + " " + Math.round(state.capturedHeading) + "°"
+        : "") +
+      ". Handa nang i-submit.";
     photoStatus.className = "status-line ok";
     refreshSubmitButton();
   }
@@ -290,6 +367,9 @@
     fd.append("capture_source", "camera");
     fd.append("client_id", item.client_id);
     fd.append("captured_at", item.captured_at || "");
+    if (item.heading_deg != null) {
+      fd.append("heading_deg", item.heading_deg);
+    }
     if (item.live_lat != null) {
       fd.append("live_lat", item.live_lat);
       fd.append("live_lon", item.live_lon);
@@ -364,6 +444,7 @@
       live_lat: state.liveGps.lat,
       live_lon: state.liveGps.lon,
       live_accuracy: state.liveGps.accuracy,
+      heading_deg: state.capturedHeading != null ? Math.round(state.capturedHeading * 10) / 10 : null,
       captured_at: state.capturedAt || new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
@@ -424,6 +505,7 @@
   function resetState() {
     state.photoBlob = null;
     state.capturedAt = null;
+    state.capturedHeading = null;
     state.liveGps = null;
     stopCamera();
     previewWrap.classList.add("hidden");
