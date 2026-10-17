@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,3 +46,20 @@ jobs:
           name: rainfed-tagging-alcala-apk
           path: rainfed-tagging-alcala-offline.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES="Offline edition — no server, all data stored on the phone.
+          Install: allow 'install unknown apps', grant Camera + Location permissions.
+          Admin / Datos tab PIN: 1234. Export CSV / GeoJSON / Photos ZIP from the Admin tab."
+          if gh release view apk-latest >/dev/null 2>&1; then
+            gh release upload apk-latest rainfed-tagging-alcala-offline.apk --clobber
+            gh release edit apk-latest --notes "$NOTES"
+          else
+            gh release create apk-latest rainfed-tagging-alcala-offline.apk \
+              --title "RAINfed-Tagging Alcala — Offline APK (latest)" \
+              --notes "$NOTES" \
+              --target "${{ github.sha }}"
+          fi
